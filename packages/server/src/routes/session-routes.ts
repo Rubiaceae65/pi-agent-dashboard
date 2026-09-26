@@ -3,11 +3,11 @@
  */
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import type { ApiResponse } from "@blackbelt-technology/pi-dashboard-shared/types.js";
+import type { ApiResponse, DashboardSession } from "@blackbelt-technology/pi-dashboard-shared/types.js";
 import type { FastifyInstance } from "fastify";
 import { evaluateContainment } from "../access/containment-gate.js";
-import { canDiscloseAccessPosture } from "../auth/localhost-guard.js";
 import { readFileVerifiedUtf8, VerifiedReadRefused } from "../access/verified-read.js";
+import { canDiscloseAccessPosture } from "../auth/localhost-guard.js";
 import type { EventStore } from "../persistence/memory-event-store.js";
 import type { SessionManager } from "../session/memory-session-manager.js";
 import type { RemoteTranscriptStore } from "../session/remote-transcript-store.js";
@@ -19,6 +19,7 @@ import { resolveDiffSource } from "../session/session-diff-source.js";
 import { findSessionCustomEntry, findSessionToolCallPayload } from "../session/session-file-reader.js";
 import type { SessionLoadWorkerPool } from "../session/session-load-worker-pool.js";
 import { originOf } from "../session/session-origin.js";
+import { scanAllSessions } from "../session/session-scanner.js";
 import type { NetworkGuard } from "./route-deps.js";
 
 export function registerSessionRoutes(
@@ -67,8 +68,29 @@ export function registerSessionRoutes(
     sizeOf: sessionDiffResultSize,
   });
 
+  // Merge live (in-memory) sessions with disk-scanned historical/archived
+  // sessions. Live entries from sessionManager.listAll() win on id collision;
+  // disk-only entries are appended. Newest-first by startedAt. Live sessions
+  // without an id (or whose file hasn't been resolved yet) are still included
+  // — never dropped on a missing `sessionFile` field.
+  // See change: surface-historical-sessions (workaround for the dashboard not
+  // exposing piSessionsDir history to the sidebar).
   fastify.get("/api/sessions", async () => {
-    const sessions = sessionManager.listAll();
+    const liveSessions = sessionManager.listAll();
+    const scannedSessions = scanAllSessions().sessions;
+    const byId = new Map<string, DashboardSession>();
+    const orphans: DashboardSession[] = [];
+    for (const s of scannedSessions) {
+      if (s.id) byId.set(s.id, s);
+      else orphans.push(s);
+    }
+    for (const s of liveSessions) {
+      if (s.id) byId.set(s.id, s);
+      else orphans.push(s);
+    }
+    const sessions = [...byId.values(), ...orphans].sort(
+      (a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0),
+    );
     return { success: true, data: sessions } satisfies ApiResponse;
   });
 
