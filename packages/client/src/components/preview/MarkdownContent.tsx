@@ -444,7 +444,17 @@ function PiAssetImg(props: React.ImgHTMLAttributes<HTMLImageElement>) {
 export const MarkdownContent = React.memo(function MarkdownContent({ content, context, frontmatter = "hide", imageBase }: Props) {
   // ASCII table monospace fixer — disabled pending further refinement
   // const processedContent = useMemo(() => wrapAsciiTables(content), [content]);
-  const processedContent = content;
+  // Lone-surrogate guard. react-markdown's tokenizer + rehype run a string
+  // through several DOM-ish helpers (`String.prototype.normalize`,
+  // `toLowerCase`, attribute coercion) which throw `DOMException: String
+  // contains an invalid character` on a JS string with an unpaired UTF-16
+  // surrogate. The exception unwinds the render and trips the React
+  // ErrorBoundary, blanking the entire chat row. toWellFormed() (TC39
+  // Stage 4, Node 20+, every evergreen browser) replaces every lone
+  // surrogate with U+FFFD in O(n). Cost is one extra string copy per
+  // markdown render — invisible next to the parse + tree-walk. See change:
+  // sanitize-lone-surrogates-before-markdown-render.
+  const processedContent = typeof content === "string" ? content.toWellFormed() : content;
   const containerRef = useRef<HTMLDivElement>(null);
   const onLoopbackClick = useLoopbackLinkOpen();
   const { resolved: theme, themeName } = useThemeContext();
