@@ -9,7 +9,7 @@ import type { EventStore } from "../persistence/memory-event-store.js";
 import type { SessionManager } from "../session/memory-session-manager.js";
 import { buildSessionDiffCached, type SessionDiffResult } from "../session/session-diff.js";
 import { SessionDiffCache } from "../session/session-diff-cache.js";
-import { findSessionToolCallPayload } from "../session/session-file-reader.js";
+import { findSessionToolCallPayload, loadSessionEntries } from "../session/session-file-reader.js";
 import { scanAllSessions } from "../session/session-scanner.js";
 import { originOf } from "../session/session-origin.js";
 import type { DashboardSession } from "@blackbelt-technology/pi-dashboard-shared/types.js";
@@ -79,13 +79,44 @@ export function registerSessionRoutes(
     { preHandler: networkGuard },
     async (request, reply) => {
       const { sessionId, toolCallId } = request.params;
+      // Fast path: in-memory event store (live bridge + recent events).
       const event = eventStore.findToolEndEvent(sessionId, toolCallId);
-      if (!event) {
-        reply.code(404);
-        return { error: "tool call still in flight or unknown" };
+      if (event) {
+        const data = (event.data ?? {}) as Record<string, unknown>;
+        return { result: data.result ?? "", isError: data.isError === true };
       }
-      const data = (event.data ?? {}) as Record<string, unknown>;
-      return { result: data.result ?? "", isError: data.isError === true };
+      // Fallback: read the on-disk JSONL. The in-memory store only carries
+      // events for sessions with a live bridge (and a bounded LRU of recent
+      // events); for every other session — including every ended session
+      // rehydrated from disk, and every session older than the LRU window —
+      // the JSONL transcript is the ONLY source of tool results. Without
+      // this, the client-side `useStaleToolReconcile` hook 404s forever on
+      // every historical tool call (the reducer marks them all 'running'
+      // because no in-memory end event exists), which the user sees as a
+      // permanent content-replay storm while reading the chat. See change:
+      // disk-fallback-for-tool-result-route.
+      const session = sessionManager.get(sessionId);
+      if (session?.sessionFile) {
+        const entries = loadSessionEntries(session.sessionFile);
+        for (const entry of entries) {
+          const msg = entry.message as
+            | { role?: string; toolCallId?: string; content?: unknown; isError?: boolean }
+            | undefined;
+          if (!msg || msg.role !== "toolResult" || msg.toolCallId !== toolCallId) continue;
+          const parts = Array.isArray(msg.content) ? msg.content : [];
+          const text = parts
+            .filter((p): p is { type?: string; text?: unknown } => !!p && typeof p === "object")
+            .map((p) => {
+              if (p.type === "text" && typeof p.text === "string") return p.text;
+              if (p.type === "image") return "[image]";
+              return "";
+            })
+            .join("");
+          return { result: text, isError: msg.isError === true };
+        }
+      }
+      reply.code(404);
+      return { error: "tool call still in flight or unknown" };
     },
   );
 

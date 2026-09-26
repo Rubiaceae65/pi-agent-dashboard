@@ -68,6 +68,216 @@ describe("GET /api/sessions/:sessionId/tool-result/:toolCallId", () => {
   });
 });
 
+// disk-fallback-for-tool-result-route: ended / historical sessions have their
+// toolResult rows only in the on-disk JSONL; the in-memory store has no
+// entry. Without the disk fallback, every historical tool call 404s and
+// useStaleToolReconcile re-fires forever → permanent content-replay storm.
+describe("GET /api/sessions/:sessionId/tool-result/:toolCallId — disk fallback", () => {
+  let tmpDir: string;
+  let sessionFile: string;
+
+  function managerWith(sessionFileById: Record<string, string | undefined>): any {
+    return {
+      listAll: () => [],
+      get: (id: string) =>
+        id in sessionFileById ? { id, cwd: "/tmp", sessionFile: sessionFileById[id] } : undefined,
+    };
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "tool-result-disk-"));
+    sessionFile = join(tmpDir, "s.jsonl");
+  });
+
+  afterEach(async () => {
+    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  async function build(manager: any): Promise<FastifyInstance> {
+    const f = Fastify();
+    registerSessionRoutes(f, {
+      sessionManager: manager,
+      eventStore: createMemoryEventStore(() => false),
+      networkGuard: PASSTHRU_GUARD,
+    });
+    await f.ready();
+    return f;
+  }
+
+  function writeSession(entries: object[]): void {
+    writeFileSync(sessionFile, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  }
+
+  it("returns 200 with the disk-stored result when no in-memory end event exists", async () => {
+    writeSession([
+      { type: "session", id: "s1", cwd: "/tmp" },
+      {
+        type: "message",
+        id: "e1",
+        parentId: null,
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "tc-1", name: "ipython" }],
+        },
+      },
+      {
+        type: "message",
+        id: "e2",
+        parentId: "e1",
+        message: {
+          role: "toolResult",
+          toolCallId: "tc-1",
+          toolName: "ipython",
+          isError: false,
+          content: [{ type: "text", text: "42\n" }],
+        },
+      },
+    ]);
+    const f = await build(managerWith({ s1: sessionFile }));
+    try {
+      const res = await f.inject({ method: "GET", url: "/api/sessions/s1/tool-result/tc-1" });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.result).toBe("42\n");
+      expect(body.isError).toBe(false);
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("preserves isError=true from the disk-stored toolResult", async () => {
+    writeSession([
+      { type: "session", id: "s1", cwd: "/tmp" },
+      {
+        type: "message",
+        id: "e2",
+        parentId: null,
+        message: {
+          role: "toolResult",
+          toolCallId: "tc-fail",
+          toolName: "bash",
+          isError: true,
+          content: [{ type: "text", text: "boom" }],
+        },
+      },
+    ]);
+    const f = await build(managerWith({ s1: sessionFile }));
+    try {
+      const res = await f.inject({ method: "GET", url: "/api/sessions/s1/tool-result/tc-fail" });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.isError).toBe(true);
+      expect(body.result).toBe("boom");
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("joins multi-part content (text + image markers) into a single result string", async () => {
+    writeSession([
+      { type: "session", id: "s1", cwd: "/tmp" },
+      {
+        type: "message",
+        id: "e2",
+        parentId: null,
+        message: {
+          role: "toolResult",
+          toolCallId: "tc-multi",
+          toolName: "read",
+          isError: false,
+          content: [
+            { type: "text", text: "before-image\n" },
+            { type: "image" },
+            { type: "text", text: "after-image\n" },
+          ],
+        },
+      },
+    ]);
+    const f = await build(managerWith({ s1: sessionFile }));
+    try {
+      const res = await f.inject({ method: "GET", url: "/api/sessions/s1/tool-result/tc-multi" });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.result).toBe("before-image\n[image]after-image\n");
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("returns 404 when the JSONL exists but no matching toolResult", async () => {
+    writeSession([
+      { type: "session", id: "s1", cwd: "/tmp" },
+      {
+        type: "message",
+        id: "e1",
+        parentId: null,
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "tc-other", name: "bash" }],
+        },
+      },
+    ]);
+    const f = await build(managerWith({ s1: sessionFile }));
+    try {
+      const res = await f.inject({ method: "GET", url: "/api/sessions/s1/tool-result/tc-1" });
+      expect(res.statusCode).toBe(404);
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("returns 404 when the session has no sessionFile (live bridge only)", async () => {
+    const f = await build(managerWith({ s1: undefined }));
+    try {
+      const res = await f.inject({ method: "GET", url: "/api/sessions/s1/tool-result/tc-1" });
+      expect(res.statusCode).toBe(404);
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("in-memory result wins over disk when both have the same toolCallId", async () => {
+    writeSession([
+      { type: "session", id: "s1", cwd: "/tmp" },
+      {
+        type: "message",
+        id: "e2",
+        parentId: null,
+        message: {
+          role: "toolResult",
+          toolCallId: "tc-1",
+          toolName: "bash",
+          isError: false,
+          content: [{ type: "text", text: "disk-version" }],
+        },
+      },
+    ]);
+    const f = await build(managerWith({ s1: sessionFile }));
+    // Inject an in-memory end event with a different result after build.
+    const eventStore = (f as any).eventStore ?? null;
+    // Reach into the fastify instance: the routes store eventStore by closure,
+    // so we need a separate path. Use a fresh fastify with both stores.
+    await f.close();
+    const f2 = Fastify();
+    const store = createMemoryEventStore(() => false);
+    store.insertEvent("s1", {
+      eventType: "tool_execution_end",
+      timestamp: 1,
+      data: { toolCallId: "tc-1", result: "memory-version", isError: false },
+    });
+    registerSessionRoutes(f2, { sessionManager: managerWith({ s1: sessionFile }), eventStore: store, networkGuard: PASSTHRU_GUARD });
+    await f2.ready();
+    try {
+      const res = await f2.inject({ method: "GET", url: "/api/sessions/s1/tool-result/tc-1" });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.result).toBe("memory-version");
+    } finally {
+      await f2.close();
+    }
+  });
+});
+
 // opt-in-out-of-cwd-session-diffs: GET /api/session-change/:sessionId/:toolCallId
 describe("GET /api/session-change/:sessionId/:toolCallId", () => {
   let fastify: FastifyInstance;
