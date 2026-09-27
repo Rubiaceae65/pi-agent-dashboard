@@ -22,8 +22,8 @@ import { compactEventsForReplay } from "../session/replay-compaction.js";
 import { truncateToolResultForReplay } from "../session/replay-truncate.js";
 import {
   chooseHydrationSource,
-  readRetainedTranscript,
   type RetainedTranscriptState,
+  readRetainedTranscript,
 } from "../session/retained-transcript.js";
 import { originOf } from "../session/session-origin.js";
 import type { BrowserHandlerContext } from "./handler-context.js";
@@ -85,10 +85,16 @@ export const SNAP_LOOKUP = 200;
  * trims events while their seqs survive), so a fixed seq span can enclose
  * arbitrarily few events and would cap how FAR a request reaches, not how
  * MUCH it delivers. On a contiguous store the two coincide.
+ *
+ * Lowered 500 -> 200 in the same change that lowered typing perf (the heavy
+ * state update + virtualizer re-measure + markdown render scale with the
+ * response size, and 200 events keeps each click below the "lock the page"
+ * threshold on an 11k+ transcript — the user can still cancel mid-load by
+ * scrolling away).
  * See change: lazy-load-session-history (D9),
- * fix-history-backfill-holey-store (D1).
+ * fix-history-backfill-holey-store (D1), shrink-backfill-batch.
  */
-export const MAX_BACKFILL_EVENTS = 500;
+export const MAX_BACKFILL_EVENTS = 200;
 
 /**
  * Snap an inclusive LOWER cut forward to the next `message_start` / `turn_start`
@@ -603,8 +609,8 @@ export async function handleHistoryBackfill(
     return refuse("out_of_range");
   }
   // Clamp into the gap the client was actually told about.
-  let from = Math.max(requestedFrom, gap.headMaxSeq + 1);
-  let to = Math.min(requestedTo, gap.tailMinSeq - 1);
+  const from = Math.max(requestedFrom, gap.headMaxSeq + 1);
+  const to = Math.min(requestedTo, gap.tailMinSeq - 1);
   if (to < from) return refuse("out_of_range");
   /**
    * Request ORIENTATION, decided on the gap-clamped bounds and BEFORE the
