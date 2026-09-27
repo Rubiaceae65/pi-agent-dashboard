@@ -63,9 +63,15 @@ export const SNAP_LOOKUP = 200;
  * Hard ceiling on the number of events one `history_backfill` may serve. The
  * span is attacker-controlled and is otherwise a request-amplification lever —
  * one small frame forcing an arbitrarily large serialize + send.
- * See change: lazy-load-session-history (D9).
+ *
+ * Lowered 500 -> 200 in the same change that lowered typing perf (the heavy
+ * state update + virtualizer re-measure + markdown render scales with the
+ * response size, and 200 events keeps each click below the "lock the page"
+ * threshold on a 11k+ transcript — the user can still cancel mid-load by
+ * scrolling away).
+ * See change: lazy-load-session-history (D9) + shrink-backfill-batch.
  */
-export const BACKFILL_MAX_SPAN = 500;
+export const BACKFILL_MAX_SPAN = 200;
 
 /**
  * Snap an inclusive LOWER cut forward to the next `message_start` / `turn_start`

@@ -142,7 +142,7 @@ export function createHistoryGapRow(): ChatMessage {
 }
 
 /** Mirrors the server's own ceiling on one `history_backfill` response. */
-const BACKFILL_MAX_SPAN = 500;
+const BACKFILL_MAX_SPAN = 200;
 
 /**
  * The seq range to request next: the slice ADJACENT TO THE TAIL, bounded by the

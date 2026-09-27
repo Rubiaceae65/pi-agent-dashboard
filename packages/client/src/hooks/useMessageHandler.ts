@@ -12,7 +12,7 @@ import type { DisplayPrefs } from "@blackbelt-technology/pi-dashboard-shared/dis
 import type { ProviderRefreshError } from "@blackbelt-technology/pi-dashboard-shared/protocol.js";
 import type { TerminalSession } from "@blackbelt-technology/pi-dashboard-shared/terminal-types.js";
 import type { CommandInfo, DashboardSession, FileEntry, ModelInfo, OpenSpecData, OpenSpecGroup, RoleInfo } from "@blackbelt-technology/pi-dashboard-shared/types.js";
-import { useCallback, useEffect, useRef } from "react";
+import { startTransition, useCallback, useEffect, useRef } from "react";
 import type { DiscoveredServerInfo } from "../components/connectivity/ServerSelector.js";
 import type { ToastVariant } from "../components/primitives/Toast.js";
 import { EMPTY_CANVAS_STATE, reduceCanvasChip, reduceCanvasIntent } from "../lib/canvas/canvas-gate.js";
@@ -801,6 +801,14 @@ export function useMessageHandler(
         }
         if (msg.events.length > 0) {
           setHistorySpliceRev?.((n) => n + 1);
+          // Wrap the splice in a transition so a 200-event backfill doesn't
+          // lock the UI thread for the duration of the React commit (setState +
+          // reducer + virtualizer re-measure + markdown rendering). The user
+          // can keep typing, scrolling, etc., while the backfilled rows paint
+          // in the background. Without this, a heavy chunk on a long session
+          // is the dominant source of the "Load earlier freezes the page"
+          // complaint. See change: shrink-backfill-batch.
+          startTransition(() => {
           setSessionStates((prev) => {
             const current = prev.get(msg.sessionId);
             if (!current) return prev;
@@ -817,17 +825,27 @@ export function useMessageHandler(
              * belong immediately ABOVE the tail — i.e. after the divider, not
              * before it. `at + 1`, not `at`.
              * See change: fix-lazy-history-backfill-ux (D3).
+             *
+             * Splice the backfilled segment in via a single O(N) traversal of
+             * a fresh array copy — replaces the three-spread version (which
+             * walked current.messages three times). On an 11k-row transcript
+             * the three-spread built a 22k-element array literal each click;
+             * this version walks it once. React immutability is preserved (the
+             * copy is fresh), and the `at` index is read from the copy of
+             * current.messages before any mutation so the splice index is stable.
              */
-            const messages = [
-              ...current.messages.slice(0, at + 1),
-              // Correctness floor before merge: no orphaned spinner, no
-              // permanently-streaming bubble (D5).
-              ...finalizeBackfillSegment(seg.messages),
-              ...current.messages.slice(at + 1),
-            ];
             const next = new Map(prev);
-            next.set(msg.sessionId, { ...current, messages });
+            const currentCopy = { ...current };
+            const messages = currentCopy.messages.slice();
+            // Correctness floor before merge: no orphaned spinner, no
+            // permanently-streaming bubble (D5). `finalizeBackfillSegment`
+            // never mutates — returns a new array.
+            const completed = finalizeBackfillSegment(seg.messages);
+            messages.splice(at + 1, 0, ...completed);
+            currentCopy.messages = messages;
+            next.set(msg.sessionId, currentCopy);
             return next;
+          });
           });
         }
         // Stop offering the affordance when the response returns nothing or
