@@ -523,12 +523,23 @@ export default function App() {
   // `state.messages` by timestamp when passing to ChatView.
   // See change: render-file-previews.
 
-  // Per-session chat-input drafts. Hydrated once from localStorage on mount,
-  // then persisted (debounced) whenever the map changes.
-  const [drafts, setDrafts] = useState<Map<string, string>>(() => readAllDrafts());
-  // Track the previous drafts snapshot so the persist effect can compute a
-  // precise write-set (added/changed keys) and delete-set (removed/emptied keys).
-  const prevDraftsRef = useRef<Map<string, string>>(drafts);
+  // Per-session chat-input drafts. Stored in a ref (NOT useState) so a
+  // keystroke does NOT re-render App -> ChatView -> the virtualizer with
+  // N events. The draft value is read fresh in render (refs read on render),
+  // so any App re-render that DOES happen (session switch, WS message,
+  // scroll) reads the latest draft correctly without forcing one. `draftsTick`
+  // is a counter that bumps ONLY when the ref mutates, used as the dep for
+  // the persistence effect below — that effect therefore runs at most once
+  // per typing burst. See change: stop-keystroke-rerender-of-chatview.
+  const draftsRef = useRef<Map<string, string>>(readAllDrafts());
+  // Previous drafts snapshot so the persist effect can compute a precise
+  // write-set (added/changed) and delete-set (removed/emptied). Initialized
+  // to a copy of the ref so the first effect run diffs nothing.
+  const prevDraftsRef = useRef<Map<string, string>>(new Map(draftsRef.current));
+  const [draftsTick, forceDraftsTick] = useState(0);
+  const bumpDraftsTick = useCallback(() => {
+    forceDraftsTick((v) => v + 1);
+  }, []);
   // Per-session pending pasted-image attachments. Lifted out of
   // useImagePaste's local useState into App so they survive the
   // unmount/remount of <CommandInput> caused by content-area route
@@ -1140,16 +1151,16 @@ export default function App() {
     [selectedState.messages],
   );
 
-  // Debounced persistence for drafts. When the map changes, diff against the
-  // previous snapshot and flush writes/deletes after a short idle window so we
-  // don't hammer localStorage on every keystroke.
+  // Debounced persistence for drafts. The dep is the tick counter, NOT the map
+  // itself — map mutations don't trigger this effect (no App re-render). When
+  // the tick bumps (at most once per typing burst), we diff the ref against
+  // the previous snapshot and flush writes/deletes after a short idle window.
   useEffect(() => {
     const prev = prevDraftsRef.current;
     const timer = setTimeout(() => {
       // Writes: new or changed entries.
-      for (const [sid, text] of drafts) {
+      for (const [sid, text] of draftsRef.current) {
         if (text === "") {
-          // Empty string in the map = cleared draft, treat as delete.
           if (prev.get(sid) !== undefined) deleteDraft(sid);
           continue;
         }
@@ -1157,41 +1168,35 @@ export default function App() {
       }
       // Deletes: keys present before but gone now.
       for (const sid of prev.keys()) {
-        if (!drafts.has(sid)) deleteDraft(sid);
+        if (!draftsRef.current.has(sid)) deleteDraft(sid);
       }
-      prevDraftsRef.current = drafts;
+      prevDraftsRef.current = new Map(draftsRef.current);
     }, 300);
     return () => clearTimeout(timer);
-  }, [drafts]);
+  }, [draftsTick]);
 
   const setDraftForSelected = useCallback(
     (text: string) => {
       if (!selectedId) return;
-      setDrafts((m) => {
-        const existing = m.get(selectedId) ?? "";
-        if (existing === text) return m;
-        const next = new Map(m);
-        next.set(selectedId, text);
-        return next;
-      });
+      const cur = draftsRef.current.get(selectedId) ?? "";
+      if (cur === text) return;
+      draftsRef.current.set(selectedId, text);
+      bumpDraftsTick();
     },
-    [selectedId],
+    [selectedId, bumpDraftsTick],
   );
 
   // Composer grammar/spell check is now fully owned by the grammar plugin
   // (composer-panel slot). See change: make-grammar-fully-plugin-contained.
 
   const clearDraftForSession = useCallback((sid: string) => {
-    setDrafts((m) => {
-      if (!m.has(sid)) return m;
-      const next = new Map(m);
-      next.delete(sid);
-      return next;
-    });
+    if (!draftsRef.current.has(sid)) return;
+    draftsRef.current.delete(sid);
+    bumpDraftsTick();
     // Also clear from localStorage eagerly so a reload before the debounce
     // window fires doesn't resurrect the cleared draft.
     deleteDraft(sid);
-  }, []);
+  }, [bumpDraftsTick]);
 
   // Per-session pending-image setter. Mutates pendingImagesMap for the
   // currently selected session. Deletes the entry when `next` is empty
@@ -1428,6 +1433,23 @@ export default function App() {
       clearImagesForSession(selectedId);
     }
   }, [handleSend, selectedId, selectedCwd, handleOpenInlineTerminal, clearDraftForSession, clearImagesForSession, sessions, BUILTIN_SLASH_COMMANDS]);
+
+  // Flush any pending debounced draft on unmount so a paused-typing-then-close
+  // app loses nothing. Reading from the ref is intentional — this is the
+  // standard ref-render escape hatch and the lint disable is local.
+  useEffect(() => {
+    return () => {
+      const prev = prevDraftsRef.current;
+      for (const [sid, text] of draftsRef.current) {
+        if (text === "") {
+          if (prev.get(sid) !== undefined) deleteDraft(sid);
+          continue;
+        }
+        if (prev.get(sid) !== text) writeDraft(sid, text);
+      }
+      prevDraftsRef.current = new Map(draftsRef.current);
+    };
+  }, []);
 
   // wrappedHandleAbort removed. The yank-to-draft UX ("restoreQueuedMessages
   // ToEditor" parity) required pi to actually clear its queues on abort, which
@@ -1754,7 +1776,7 @@ export default function App() {
     const selectedSession = sessions.get(selectedId);
     const selectedCwd = selectedSession?.cwd;
     const selectedState = sessionStates.get(selectedId) ?? createInitialState();
-    const selectedDraft = drafts.get(selectedId) ?? "";
+    const selectedDraft = draftsRef.current.get(selectedId) ?? "";
     const selectedImages = pendingImagesMap.get(selectedId) ?? (EMPTY_IMAGES as ImageContent[]);
     const selectedCommands = sessionCommands.get(selectedId) ?? [];
     const selectedContextUsage = contextUsageMap.get(selectedId) ?? selectedState.contextUsage;
