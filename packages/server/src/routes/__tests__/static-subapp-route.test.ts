@@ -34,11 +34,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveStaticClientDir } from "../../lib/client-dist.js";
-import {
-  LINKS_PREFIX,
-  MOBILE_PREFIX,
-  registerStaticSubAppRoute,
-} from "../static-subapp-route.js";
+import { LINKS_PREFIX, MOBILE_PREFIX } from "../static-subapp-route.js";
 import { createServer, type DashboardServer } from "../../server.js";
 
 /**
