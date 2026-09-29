@@ -176,6 +176,11 @@ import { registerHostGateRoutes } from "./routes/host-gate-routes.js";
 import { registerKnownServersRoutes } from "./routes/known-servers-routes.js";
 import { registerLiveServerRoutes } from "./routes/live-server-routes.js";
 import { registerManifestRoute } from "./routes/manifest-route.js";
+import {
+  LINKS_PREFIX,
+  MOBILE_PREFIX,
+  registerStaticSubAppRoute,
+} from "./routes/static-subapp-route.js";
 import { registerModelProxyApiKeyRoutes } from "./routes/model-proxy-api-key-routes.js";
 import { registerModelProxyDiagnosticsRoutes } from "./routes/model-proxy-diagnostics-routes.js";
 import { registerModelProxyRefreshRoutes } from "./routes/model-proxy-refresh-routes.js";
@@ -2257,6 +2262,14 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
   // Dev / monorepo fallbacks are still allowed when require.resolve
   // misses (e.g. running from a checked-out workspace where the web
   // package hasn't been linked yet).
+
+  // Static sub-apps — only the SLASHLESS path needs a route each; `/mobile/`
+  // and `/links/` are the bundle's own index.html files and are served by
+  // fastify-static below. Same ordering rule as the manifest route: explicit
+  // match wins over the asset. See change: add-same-origin-mobile-poc,
+  // add-same-origin-links-page.
+  registerStaticSubAppRoute(fastify, MOBILE_PREFIX);
+  registerStaticSubAppRoute(fastify, LINKS_PREFIX);
 
   // Dynamic PWA manifest — MUST be registered before fastify-static so
   // explicit route matching wins over the static asset. See change:

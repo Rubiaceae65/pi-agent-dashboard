@@ -76,6 +76,16 @@ const AUTH_PREFIX = "/auth";
  */
 const STATIC_PUBLIC: ReadonlySet<string> = new Set([
   "/",
+  /**
+   * Slashless entry points of the static sub-apps (see
+   * routes/static-subapp-route.ts). Listed for the same reason as `/` above
+   * and NOT because anything behind them is public: `/mobile/` and `/links/`
+   * are the bundle's own static `index.html` files, and every request such a
+   * page makes is `/api/...` or `/ws`, both in jurisdiction.
+   * See change: add-same-origin-mobile-poc, add-same-origin-links-page.
+   */
+  "/mobile",
+  "/links",
   "*",
   "/*",
   "/sw.js",
