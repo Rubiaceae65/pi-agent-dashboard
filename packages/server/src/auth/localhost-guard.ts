@@ -362,6 +362,28 @@ function hasNetworkPassCondition(
  * Create a network guard that allows loopback, trusted networks, or authenticated requests.
  * Fastify lifecycle guarantees onRequest (auth) runs before preHandler (this guard).
  */
+/**
+ * Brand stamped on every function `createNetworkGuard` returns, so a test (or a
+ * review tool) can tell "this route carries THE network guard" from "this route
+ * carries some other preHandler" without booting a server and racing an
+ * `onRequest` chain.
+ *
+ * `Symbol.for` (not a module-local `Symbol`) so the brand survives the two
+ * module instances a dual-build test run can end up with — a `Symbol()` would
+ * make the check silently vacuous, which is the exact failure mode a guard
+ * regression test exists to prevent.
+ *
+ * See change: close-unguarded-session-routes.
+ */
+export const NETWORK_GUARD_BRAND: unique symbol = Symbol.for(
+  "pi-agent-dashboard.networkGuard",
+) as never;
+
+/** True when `fn` is a per-route network guard produced by `createNetworkGuard`. */
+export function isNetworkGuard(fn: unknown): boolean {
+  return typeof fn === "function" && (fn as unknown as Record<symbol, unknown>)[NETWORK_GUARD_BRAND] === true;
+}
+
 export function createNetworkGuard(
   /**
    * A fixed list, or a thunk read on EVERY request. The server passes a thunk
@@ -373,13 +395,15 @@ export function createNetworkGuard(
   opts?: { localToken?: string },
 ) {
   const readTrusted = typeof trustedNetworks === "function" ? trustedNetworks : () => trustedNetworks;
-  return async function networkGuard(
+  const guard = async function networkGuard(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
     if (hasNetworkPassCondition(request, { readTrusted, localToken: opts?.localToken })) return;
     sendNetworkDenied(request, reply);
   };
+  (guard as unknown as Record<symbol, unknown>)[NETWORK_GUARD_BRAND] = true;
+  return guard;
 }
 
 /**

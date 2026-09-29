@@ -86,9 +86,23 @@ export function registerBlackholeRoutes(
     logger: RouteLogger;
     env?: Record<string, string | undefined>;
     isPiExtensionInstalled?: (name: string) => Promise<boolean>;
+    /**
+     * The host admission guard (ctx.networkGuard). The session route READS live
+     * per-session pipeline state, and the config route is a cross-user WRITE;
+     * both belong behind the same guard as every core session route, for the
+     * same reason — the universal hook is bypassed by any `auth.bypassUrls`
+     * prefix, so a route without a preHandler is fully open under that
+     * configuration. Optional so the plugin's own unit tests (which inject a
+     * bare instance) keep compiling; the production call site always supplies
+     * it. See change: close-unguarded-session-routes.
+     */
+    networkGuard?: (req: unknown, reply: unknown) => Promise<void>;
   },
 ): void {
   const { logger, env } = deps;
+  // No-op default keeps an injected bare instance working in tests; every
+  // production mount passes the real guard (see the registerPlugin call below).
+  const guard = deps.networkGuard ?? (async () => {});
 
   fastify.get(STATUS_ROUTE, async (_req, reply) => {
     if (deps.isPiExtensionInstalled) {
@@ -112,7 +126,7 @@ export function registerBlackholeRoutes(
     return { installed: existsSync(resolveBlackholeConfigPath(env)) };
   });
 
-  fastify.get<{ Params: { id: string } }>(SESSION_ROUTE, async (req, reply) => {
+  fastify.get<{ Params: { id: string } }>(SESSION_ROUTE, { preHandler: guard }, async (req, reply) => {
     const { id } = req.params;
     // Validate BEFORE any filesystem access (D5). The validator is pure; a
     // rejected id touches nothing.
@@ -146,7 +160,7 @@ export function registerBlackholeRoutes(
     return state;
   });
 
-  fastify.get(ROUTE, async (_req, reply) => {
+  fastify.get(ROUTE, { preHandler: guard }, async (_req, reply) => {
     const filePath = resolveBlackholeConfigPath(env);
     const result = readConfig(filePath);
     if (result.status === "parse-error") {
@@ -160,7 +174,7 @@ export function registerBlackholeRoutes(
     return result;
   });
 
-  fastify.put<{ Body: unknown }>(ROUTE, async (req, reply) => {
+  fastify.put<{ Body: unknown }>(ROUTE, { preHandler: guard }, async (req, reply) => {
     const filePath = resolveBlackholeConfigPath(env);
     const body = req.body;
     const validation = validateBlackholeConfig(body);
@@ -208,6 +222,7 @@ export async function registerPlugin(ctx: ServerPluginContext): Promise<void> {
   registerBlackholeRoutes(ctx.fastify, {
     logger: ctx.logger,
     isPiExtensionInstalled: ctx.isPiExtensionInstalled,
+    networkGuard: ctx.networkGuard as unknown as (req: unknown, reply: unknown) => Promise<void>,
   });
 }
 

@@ -75,7 +75,8 @@ export function registerSessionRoutes(
   // — never dropped on a missing `sessionFile` field.
   // See change: surface-historical-sessions (workaround for the dashboard not
   // exposing piSessionsDir history to the sidebar).
-  fastify.get("/api/sessions", async () => {
+  fastify.get("/api/sessions",
+  { preHandler: networkGuard }, async () => {
     const liveSessions = sessionManager.listAll();
     const scannedSessions = scanAllSessions().sessions;
     const byId = new Map<string, DashboardSession>();
@@ -100,6 +101,7 @@ export function registerSessionRoutes(
   // archive-sessions-lazy-load.
   fastify.get<{ Querystring: { cwd?: string; limit?: string; cursor?: string; q?: string } }>(
     "/api/sessions/archived",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const startedMs = Date.now();
       const { cwd, limit, cursor, q } = request.query;
@@ -132,6 +134,7 @@ export function registerSessionRoutes(
 
   fastify.get<{ Params: { id: string } }>(
     "/api/sessions/archived/:id",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const item = sessionArchive?.getById(request.params.id);
       if (!item) {
@@ -170,6 +173,7 @@ export function registerSessionRoutes(
 
   fastify.get<{ Params: { sessionId: string; seq: string } }>(
     "/api/events/:sessionId/:seq",
+    { preHandler: networkGuard },
     async (request) => {
       const { sessionId, seq } = request.params;
       const event = eventStore.getEvent(sessionId, parseInt(seq, 10));

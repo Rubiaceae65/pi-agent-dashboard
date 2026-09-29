@@ -333,7 +333,19 @@ export interface ServerConfig {
    * enumerate the route set R exactly as it boots. Additive; no runtime effect.
    * See change: expand-mcp-tiered-surface (D6).
    */
-  onRoute?: (route: { method: string | string[]; url: string }) => void;
+  onRoute?: (route: {
+    method: string | string[];
+    url: string;
+    /**
+     * The route's OWN `preHandler` chain, exactly as registered — root hooks
+     * (the universal network guard among them) are deliberately NOT folded in,
+     * because the point of this field is to answer "did a developer attach the
+     * per-route guard to THIS route", which is precisely what a root hook would
+     * mask. Additive: every existing consumer destructures only method/url.
+     * See change: close-unguarded-session-routes.
+     */
+    preHandler?: unknown;
+  }) => void;
 }
 
 export interface DashboardServer {
@@ -1362,7 +1374,18 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
   // expand-mcp-tiered-surface (D6).
   if (config.onRoute) {
     const collect = config.onRoute;
-    fastify.addHook("onRoute", (route) => collect({ method: route.method, url: route.url }));
+    fastify.addHook("onRoute", (route) => {
+      // `routeOptions.preHandler` is the route's own handler chain; the
+      // `preHandler` alias on the shorthand object is what Fastify passes to
+      // the hook, and is the same reference. Normalized to an array so a
+      // consumer never has to branch on function-vs-array.
+      const own = (route as { preHandler?: unknown }).preHandler;
+      collect({
+        method: route.method,
+        url: route.url,
+        preHandler: own === undefined ? [] : Array.isArray(own) ? own : [own],
+      });
+    });
   }
 
   // Global rate limiter. Two jobs: a real remote-caller ceiling, and making the

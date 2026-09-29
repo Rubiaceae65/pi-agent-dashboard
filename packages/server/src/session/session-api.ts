@@ -78,12 +78,19 @@ export interface SessionApiDeps {
    */
   getTrustedNetworks?: () => string[];
   /**
-   * Admission guard for the lifecycle/extension-ui routes. Without it an
-   * unauthenticated off-host caller (no Origin, so the CSRF gate is silent)
-   * could reach the destructive lifecycle handler. See change:
-   * expand-mcp-tiered-surface (D3).
+   * Admission guard for EVERY route in this file. Without it an unauthenticated
+   * off-host caller (no Origin, so the CSRF gate is silent) could list sessions,
+   * prompt one, abort it, rename it, or kill it. See change:
+   * expand-mcp-tiered-surface (D3), close-unguarded-session-routes.
+   *
+   * REQUIRED, not optional. It was optional while only the two D3 routes used
+   * it, which let thirteen more be registered with no guard at all and nothing
+   * but a reviewer's eye to catch it. Making it required means the next route
+   * added here cannot compile without deciding — and the structural test
+   * (`session-route-network-guard.test.ts`) fails if one is registered without
+   * actually passing it.
    */
-  networkGuard?: NetworkGuard;
+  networkGuard: NetworkGuard;
 }
 
 type IdParams = { Params: { id: string } };
@@ -109,6 +116,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/prompt
   fastify.post<IdParams & { Body: { text?: string; images?: any[] } }>(
     "/api/session/:id/prompt",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const { text, images } = request.body ?? {};
@@ -195,6 +203,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/abort
   fastify.post<IdParams>(
     "/api/session/:id/abort",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const result = getSessionOrFail(sessionManager, id);
@@ -210,6 +219,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/shutdown
   fastify.post<IdParams>(
     "/api/session/:id/shutdown",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const result = getSessionOrFail(sessionManager, id);
@@ -231,6 +241,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/rename
   fastify.post<IdParams & { Body: { name?: string } }>(
     "/api/session/:id/rename",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const { name } = request.body ?? {};
@@ -254,6 +265,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/archive
   fastify.post<IdParams>(
     "/api/session/:id/archive",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const result = await requestArchive(id, {
@@ -275,6 +287,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/unarchive
   fastify.post<IdParams>(
     "/api/session/:id/unarchive",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const result = sessionArchive?.unarchiveSession(id);
@@ -289,6 +302,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/spawn
   fastify.post<{ Body: { cwd?: string } }>(
     "/api/session/spawn",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { cwd } = request.body ?? {};
       if (!cwd) {
@@ -330,6 +344,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/resume
   fastify.post<IdParams & { Body: { mode?: string } }>(
     "/api/session/:id/resume",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const { mode } = request.body ?? {};
@@ -482,6 +497,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/flow-control
   fastify.post<IdParams & { Body: { action?: string } }>(
     "/api/session/:id/flow-control",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const { action } = request.body ?? {};
@@ -502,6 +518,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/model
   fastify.post<IdParams & { Body: { provider?: string; modelId?: string } }>(
     "/api/session/:id/model",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const { provider, modelId } = request.body ?? {};
@@ -522,6 +539,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/thinking-level
   fastify.post<IdParams & { Body: { level?: string } }>(
     "/api/session/:id/thinking-level",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const { level } = request.body ?? {};
@@ -547,7 +565,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // expand-mcp-tiered-surface (D3).
   fastify.post<IdParams & { Body: { action?: unknown } }>(
     "/api/session/:id/lifecycle",
-    { ...(networkGuard ? { preHandler: networkGuard } : {}) },
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const action = request.body?.action;
@@ -593,7 +611,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
     IdParams & { Body: { requestId?: unknown; result?: unknown; cancelled?: unknown } }
   >(
     "/api/session/:id/extension-ui-response",
-    { ...(networkGuard ? { preHandler: networkGuard } : {}) },
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const { requestId, result, cancelled } = request.body ?? {};
@@ -620,6 +638,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/attach-proposal
   fastify.post<IdParams & { Body: { changeName?: string } }>(
     "/api/session/:id/attach-proposal",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const { changeName } = request.body ?? {};
@@ -649,6 +668,7 @@ export function registerSessionApi(fastify: FastifyInstance, deps: SessionApiDep
   // POST /api/session/:id/detach-proposal
   fastify.post<IdParams>(
     "/api/session/:id/detach-proposal",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const { id } = request.params;
       const result = getSessionOrFail(sessionManager, id);

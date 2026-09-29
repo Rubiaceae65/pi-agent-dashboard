@@ -69,7 +69,11 @@ async function mkApp(opts: { guard?: (req: any, reply: any) => Promise<void> } =
       lifecycleCalls.push({ sessionId, action });
     },
     getTrustedNetworks: () => [],
-    networkGuard: opts.guard,
+    // `networkGuard` became REQUIRED when the session routes were all guarded
+    // (change: close-unguarded-session-routes). A caller that wants no
+    // admission control opts in explicitly with an always-pass guard, which is
+    // what `opts.guard` already is when supplied.
+    networkGuard: opts.guard ?? (async () => {}),
   });
   await app.ready();
   return { app, tokens, lifecycleCalls, clearUiRequest, sendToSession };
