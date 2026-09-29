@@ -3,6 +3,7 @@
  * Supports loopback, trusted networks (CIDR/wildcard/exact), and authenticated users.
  */
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { SUB_APP_PREFIXES } from "../lib/static-subapps.js";
 import { blockEvents } from "../tunnel/tunnel-block-events.js";
 import { isBypassed } from "./bypass-urls.js";
 import { verifyLocalToken } from "./local-token.js";
@@ -408,11 +409,38 @@ export function createNetworkGuard(
 
 /**
  * Jurisdiction namespaces of the universal guard: the sensitive HTTP surfaces.
- * Anchored on a TRAILING SLASH so `/apiv2` is a near-miss rather than `/api`.
- * Every dangerous route in the server lives under one of these; the
- * namespace-coverage test enforces that. See change: add-universal-network-guard.
+ * The four API namespaces below are anchored on a TRAILING SLASH so `/apiv2` is
+ * a near-miss rather than `/api`; the sub-app entries are matched bare, for the
+ * reason given below. Every dangerous route in the server lives under one of
+ * these; the namespace-coverage test enforces that.
+ * See change: add-universal-network-guard.
+ *
+ * The static sub-apps are IN this list, and being explicit about the near-miss
+ * trade is the point. `/api/` is a prefix every route shares, so a trailing
+ * slash costs nothing. A sub-app prefix is a whole top-level surface owned by
+ * one team, so matching it BARE is the stricter and more correct reading: it
+ * also claims the slashless `/links` and `/mobile`, and over-claims only paths
+ * that no other feature can own. The cost is that a hypothetical `/linksxyz`
+ * would be denied too — a 403 on a URL that serves nothing, which is the
+ * direction to err in.
+ *
+ * These were NOT here when the sub-apps were introduced. The first version
+ * reasoned that a sub-app is "static bytes with no capability" and therefore
+ * safe outside the guard, the argument that holds for the SPA shell. It does
+ * not hold for a sub-app: the links page's HTML *is* the disclosure — it ships
+ * the tailnet, the host LAN, the Brain and sandbox names, and the service ports
+ * to any peer that can open the socket. The prefixes are imported from
+ * `lib/static-subapps.ts` — the same module the route registration reads — so
+ * the served set and the guarded set cannot drift apart.
+ * See change: add-universal-network-guard, guard-static-subapps.
  */
-const GUARD_JURISDICTION_PREFIXES = ["/api/", "/v1/", "/editor/", "/live/"] as const;
+const GUARD_JURISDICTION_PREFIXES: readonly string[] = [
+  "/api/",
+  "/v1/",
+  "/editor/",
+  "/live/",
+  ...SUB_APP_PREFIXES,
+];
 
 /**
  * Fixed in-namespace public endpoints, compared against the EXACT pathname.

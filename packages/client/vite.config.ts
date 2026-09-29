@@ -1,9 +1,9 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig, type Plugin } from "vite";
 // Import via a relative workspace path so vite's esbuild config-loader bundles
 // the plugin (and its transitive .ts deps) into the temp config bundle. Using
 // the package specifier "@blackbelt-technology/dashboard-plugin-runtime"
@@ -60,11 +60,67 @@ function resolveDashboardPort(): number {
 
 const DASHBOARD_PORT = resolveDashboardPort();
 
+/**
+ * Keep documentation out of the SERVED tree.
+ *
+ * `publicDir` is copied VERBATIM into `dist/`, and `dist/` is what
+ * `@fastify/static` serves at `/`. So every file under `public/` is published
+ * at a guessable URL — including the repo's own directory index.
+ * `public/AGENTS.md` (a per-directory index this repo's convention REQUIRES,
+ * see docs/AGENTS.md) has therefore been reachable at `/AGENTS.md` since it was
+ * added, and `public/mobile/README.md` was reachable at `/mobile/README.md`,
+ * describing the API surface and the `lastSeq` resume contract to anyone who
+ * could open the socket.
+ *
+ * Vite has no filter hook for `publicDir`, so the files are removed after the
+ * copy. Only documentation extensions are touched: `manifest.json`, the icons,
+ * `sw.js` and the sub-app bundles are all left alone, and nothing here reads
+ * or rewrites a file.
+ *
+ * Deliberately NOT solved by deleting `public/AGENTS.md`. The index belongs next
+ * to the files it indexes; what is wrong is publishing it, not keeping it.
+ *
+ * Paired with the test `no documentation is placed in the served tree` in
+ * packages/server/src/routes/__tests__/static-subapp-route.test.ts, which
+ * asserts the outcome (nothing doc-shaped in the build) rather than this
+ * mechanism. See change: guard-static-subapps.
+ */
+function stripDocsFromPublicDir(): Plugin {
+  const DOC = /\.(?:md|markdown|txt|rst|adoc)$/i;
+  return {
+    name: "dashboard:strip-docs-from-public-dir",
+    // `closeBundle` runs after the publicDir copy and after the bundle write,
+    // so the files it removes are not regenerated afterwards.
+    closeBundle() {
+      const outDir = path.resolve(__dirname, "dist");
+      if (!fs.existsSync(outDir)) return;
+      const removed: string[] = [];
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const abs = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(abs);
+          } else if (DOC.test(entry.name)) {
+            fs.rmSync(abs);
+            removed.push(path.relative(outDir, abs));
+          }
+        }
+      };
+      walk(outDir);
+      if (removed.length > 0) {
+        // Loud on purpose: if this list ever grows a file the app needs, the
+        // build log is where it should be noticed, not in a 404 at runtime.
+        this.warn(`stripped documentation from the served tree: ${removed.join(", ")}`);
+      }
+    },
+  };
+}
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
     viteDashboardPluginsPlugin(path.resolve(__dirname, "../..")),
+    stripDocsFromPublicDir(),
   ],
   root: "src",
   // publicDir is resolved relative to `root` (= packages/client/src/), so three

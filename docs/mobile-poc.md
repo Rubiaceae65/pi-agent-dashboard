@@ -22,12 +22,25 @@ has drawn and sends it on every (re)subscribe, so a dropped phone link resumes
 where it left off instead of restarting the stream. This is the server's existing
 `EventReplayMessage` contract — the PoC just uses it.
 
+## Where the source lives, and how it is served
+
+The client is `public/mobile/` in this repo. Vite copies `public/` verbatim into
+the client build, `@fastify/static` serves that at `/`, and
+`packages/server/src/routes/static-subapp-route.ts` answers the slashless
+`/mobile` with a 308 to `/mobile/`. So there is one origin, one process, and no
+CORS grant — open **`<dashboard>/mobile/`** on a phone and it talks to that same
+dashboard's `/api` and `/ws`.
+
+This file is `docs/mobile-poc.md` rather than `public/mobile/README.md` on
+purpose: anything under `public/` is copied into `dist/` and therefore SERVED.
+A README describing the API surface has no business at a public URL.
+
 ## Run it
 
-Serve this directory **same-origin as the dashboard** and open it on a phone:
+Served by the dashboard itself:
 
-    # PoC scaffolding only — proxies /api and /ws to a dashboard on :8111
-    node tools/poc-host.js
+    GET <dashboard>/mobile/          # the client
+    GET <dashboard>/mobile           # 308 -> /mobile/
 
 Then `POST /api/ws-ticket {"scope":"browser"}` and connect to `/ws?ticket=…`.
 
@@ -35,8 +48,8 @@ Then `POST /api/ws-ticket {"scope":"browser"}` and connect to `/ws?ticket=…`.
 
 `POST /api/ws-ticket` and `/api/tools` are behind `networkGuard`, which admits
 loopback, a `trustedNetworks` CIDR, or a paired-device bearer. The PoC host
-(`tools/poc-host.js`) is scaffolding; in a real deployment the PWA is served by
-the dashboard itself and there is no second origin at all.
+(`tools/poc-host.js`) was scaffolding; the PWA is served by the dashboard itself
+and there is no second origin at all.
 
 Before a phone can be *any* good — the existing web client included — the
 dashboard needs one of:

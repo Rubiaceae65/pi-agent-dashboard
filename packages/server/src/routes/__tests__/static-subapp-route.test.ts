@@ -34,8 +34,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveStaticClientDir } from "../../lib/client-dist.js";
-import { LINKS_PREFIX, MOBILE_PREFIX } from "../static-subapp-route.js";
 import { createServer, type DashboardServer } from "../../server.js";
+import { LINKS_PREFIX, MOBILE_PREFIX } from "../static-subapp-route.js";
 
 /**
  * Body markers that identify each page. A marker is a string the SPA shell
@@ -169,3 +169,88 @@ describe("a path with no sub-app behind it does NOT serve a sub-app", () => {
     }
   });
 });
+
+/**
+ * The served tree carries no documentation.
+ *
+ * Review finding #2 on this area: `public/mobile/README.md` was being copied
+ * verbatim into `dist/` and therefore served at `/mobile/README.md`. A README
+ * that maps the API surface (`GET /api/sessions`, the `lastSeq` resume
+ * contract, the four WS message types) is a description of the control plane
+ * published to anyone who can reach the port.
+ *
+ * The generalisation, and the reason this is a test rather than a one-time
+ * deletion: EVERYTHING under `public/` is served. `README.md`, `NOTES.md`, a
+ * scratch `.env`, a half-finished design note — all of it lands in `dist/` at a
+ * guessable URL. So the invariant is stated over the whole source `public/`
+ * tree: no documentation file may be placed there in the first place. The
+ * canonical location is `docs/`, which is not served.
+ */
+describe("no documentation is placed in the served tree", () => {
+  const PUBLIC_DIR = path.resolve(__dirname, "..", "..", "..", "..", "..", "public");
+
+  it("finds the source public/ directory", () => {
+    // Guards against a wrong path making the assertions below vacuous.
+    expect(fs.existsSync(PUBLIC_DIR), PUBLIC_DIR).toBe(true);
+  });
+
+  it("has no ad-hoc notes under public/, at any depth", () => {
+    // `AGENTS.md` is the ONE sanctioned exception: this repo's convention
+    // requires a per-directory index next to the files it indexes, and
+    // `public/AGENTS.md` is that index. It is kept in the tree and kept OUT of
+    // the served build (see the `strip-docs-from-public-dir` Vite plugin) —
+    // publishing the index is the defect, not keeping it.
+    const SANCTIONED = new Set(["AGENTS.md"]);
+    const offenders: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const abs = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(abs);
+        } else {
+          const rel = path.relative(PUBLIC_DIR, abs);
+          if (/\.(md|markdown|txt|rst|adoc)$/i.test(entry.name) && !SANCTIONED.has(rel)) {
+            offenders.push(rel);
+          }
+        }
+      }
+    };
+    walk(PUBLIC_DIR);
+    expect(
+      offenders,
+      "everything under public/ is copied into dist/ and served at a guessable URL. Move these to docs/, which is not served.",
+    ).toEqual([]);
+  });
+
+  it("shipped no documentation file anywhere in the served tree", () => {
+    if (!clientDir) return; // no build in this checkout; the source tests above still ran
+    // The whole of `dist/`, at any depth — not just the two sub-app folders.
+    // This is the assertion that actually closes the hole, and it is an
+    // OUTCOME (nothing doc-shaped is published) rather than an assertion about
+    // the Vite plugin that removes them, so deleting the plugin, renaming the
+    // extension or re-adding a README all fail here.
+    const offenders: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const abs = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(abs);
+        else if (/\.(md|markdown|txt|rst|adoc)$/i.test(entry.name)) offenders.push(path.relative(clientDir!, abs));
+      }
+    };
+    walk(clientDir);
+    expect(
+      offenders,
+      `the served tree at ${clientDir} publishes documentation. The client build must strip it (strip-docs-from-public-dir).`,
+    ).toEqual([]);
+  });
+
+  it("still ships the sub-apps and the PWA essentials", () => {
+    if (!clientDir) return;
+    // The negative check needs its counterpart, or "dist is empty" would also
+    // satisfy it. If the stripping ever over-reached, THIS fails.
+    for (const f of ["index.html", "manifest.json", "sw.js", "mobile/index.html", "links/index.html"]) {
+      expect(fs.existsSync(path.join(clientDir, f)), `${f} missing from the build`).toBe(true);
+    }
+  });
+});
+

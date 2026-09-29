@@ -1,9 +1,9 @@
 /**
  * Namespace coverage — the safety net for the universal network guard.
  *
- * The guard's jurisdiction is prefix-scoped (`/api`, `/v1`, `/editor`, `/live`),
- * so a future dangerous route registered OUTSIDE those prefixes would be
- * silently unguarded. This suite boots the real server (so plugin routes are
+ * The guard's jurisdiction is prefix-scoped (`/api`, `/v1`, `/editor`, `/live`,
+ * and the static sub-apps `/mobile` + `/links`), so a future dangerous route
+ * registered OUTSIDE those prefixes would be silently unguarded. This suite boots the real server (so plugin routes are
  * registered exactly as they are in production), collects every route via
  * `onRoute`, and proves each one is either:
  *
@@ -76,16 +76,6 @@ const AUTH_PREFIX = "/auth";
  */
 const STATIC_PUBLIC: ReadonlySet<string> = new Set([
   "/",
-  /**
-   * Slashless entry points of the static sub-apps (see
-   * routes/static-subapp-route.ts). Listed for the same reason as `/` above
-   * and NOT because anything behind them is public: `/mobile/` and `/links/`
-   * are the bundle's own static `index.html` files, and every request such a
-   * page makes is `/api/...` or `/ws`, both in jurisdiction.
-   * See change: add-same-origin-mobile-poc, add-same-origin-links-page.
-   */
-  "/mobile",
-  "/links",
   "*",
   "/*",
   "/sw.js",
@@ -119,7 +109,7 @@ describe("S17: every registered route is guarded or explicitly exempt", () => {
     const offenders = routes.filter((r) => !isCovered(r.url));
     expect(
       offenders.map((r) => `${r.method} ${r.url}`),
-      "a dangerous route outside the guard's jurisdiction is unguarded — either move it under /api|/v1|/editor|/live, or add its namespace to INDEPENDENTLY_AUTHENTICATED",
+      "a dangerous route outside the guard's jurisdiction is unguarded — either move it under /api|/v1|/editor|/live|/mobile|/links, or add its namespace to INDEPENDENTLY_AUTHENTICATED",
     ).toEqual([]);
   });
 

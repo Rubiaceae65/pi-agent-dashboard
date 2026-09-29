@@ -15,24 +15,32 @@
  * desktop app. A permanent redirect to the slashed form is the whole fix, and
  * the slashed form is the one a human types.
  *
- * GUARD POSITION — read this before "fixing" it.
- * A sub-app's files are OUTSIDE the network guard's jurisdiction on purpose.
- * `isGuardJurisdiction` covers `/api/`, `/v1/`, `/editor/`, `/live/` only, and
- * the SPA shell at `/`, `/manifest.json` and the PWA icons are already outside
- * it: they are static bytes with no capability. A sub-app is the same kind of
- * surface — the page loading tells an attacker nothing about what it may read.
- * Every byte of DATA a sub-app can reach comes from `/api/...` or `/ws`, all of
- * which ARE guarded, so a sub-app on an untrusted network is a UI that cannot
- * read a single session. Guarding the HTML instead would buy nothing and would
- * cost the owner the ability to open the dashboard's own pages on a phone.
- * See change: add-same-origin-mobile-poc.
+ * GUARD POSITION — read this before "changing" it.
+ *
+ * A sub-app IS in the network guard's jurisdiction. The first version of this
+ * file argued the opposite — that a sub-app is "static bytes with no
+ * capability", the same argument that holds for the SPA shell at `/`. That
+ * argument is FALSE here, and the review that caught it is the reason this
+ * paragraph is blunt: the links page is not a shell, it is the inventory.
+ * Shipped in its HTML, unauthenticated, to anyone who can reach the port, it
+ * hands over the tailnet addresses (100.65.131.102, 100.64.121.16), the host
+ * LAN (10.99.227.30/60/115/242), the Brain and sandbox names, and the service
+ * ports including 5900. A sub-app's reachability is therefore a disclosure
+ * decision about that page's CONTENT, not a fact about its being a file.
+ *
+ * The prefixes are exported and consumed by `localhost-guard.ts` to build the
+ * guard's jurisdiction, so adding a sub-app here and forgetting the guard (or
+ * vice versa) is not expressible.
+ *
+ * See change: add-same-origin-mobile-poc, guard-static-subapps.
  */
 import type { FastifyInstance } from "fastify";
 
-/** The phone client, published by this branch. */
-export const MOBILE_PREFIX = "/mobile";
-/** The workshop-map links page (see change: add-same-origin-links-page). */
-export const LINKS_PREFIX = "/links";
+// The prefix list itself lives in `lib/` so the network guard can read the same
+// list without importing `routes/`. Re-exported here because this is the module
+// that registers the routes, and a caller that only wants the constants should
+// not have to know that.
+export { LINKS_PREFIX, MOBILE_PREFIX, SUB_APP_PREFIXES } from "../lib/static-subapps.js";
 
 /** Normalise a sub-app prefix to a leading slash and no trailing slash. */
 function normalizePrefix(prefix: string): string {
