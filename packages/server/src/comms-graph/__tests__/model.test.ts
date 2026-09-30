@@ -249,14 +249,62 @@ describe("the busiest hub always gets its name", () => {
     expect(keep.has("a")).toBe(true);
   });
 
-  it("stays bounded when everything is a hub", () => {
+  // The fixture that makes the guarantee FIRE, and the reason the old one
+  // could not. A REGULAR graph can never trigger a `2 x median` rule: every
+  // node equals the median, so the floor is above every degree and the hub set
+  // is empty. The first version of this test used a 4-regular ring, asserted
+  // `<= cap + 8`, and passed with MAX_HUB_LABELS set to 100000 - a test that
+  // could not fail, guarding the one thing that makes the promise safe.
+  //
+  // SKEWED is the shape the rule exists for: 12 connectors, each wired to 10
+  // leaves; 30 leaves at degree 4. median = 4, floor = 8, so all 12 connectors
+  // qualify and the cap has to bite.
+  const skewed = () => {
+    const leaves = Array.from({ length: 30 }, (_, i) => node(`leaf-${i}`));
+    const hubs = Array.from({ length: 12 }, (_, i) => node(`hub-${i}`));
+    const edges = hubs.flatMap((h, i) =>
+      Array.from({ length: 10 }, (_, j) => ({
+        kind: "message" as const,
+        from: h.key,
+        to: leaves[(i * 3 + j) % 30].key,
+        count: 1,
+        firstAt: ago(5),
+        lastAt: ago(5),
+        lines: [],
+        gone: false,
+      })),
+    );
+    // Leaves first, so the score-based budget spends itself on leaves and the
+    // hub count in `keep` is unambiguously the cap doing its job.
+    return { nodes: [...leaves, ...hubs], edges };
+  };
+
+  it("actually fires on a skewed graph - the guarantee is not vacuous", () => {
+    const g = skewed();
+    const keep = labelSetFor(g.nodes, g.edges, { cap: 4 });
+    // 12 nodes qualify as hubs; the cap admits 8. With MAX_HUB_LABELS removed
+    // this becomes 12 and the next assertion fails, which is the point.
+    const hubsLabelled = g.nodes.filter((n) => n.key.startsWith("hub-") && keep.has(n.key)).length;
+    expect(hubsLabelled).toBe(8);
+    expect(keep.size).toBe(12);
+  });
+
+  it("stays bounded when the promise would otherwise flood the canvas", () => {
+    const g = skewed();
+    expect(labelSetFor(g.nodes, g.edges, { cap: 4 }).size).toBeLessThanOrEqual(4 + 8);
+  });
+
+  it("is silent on a regular graph, and that is structural, not a near miss", () => {
     const nodes = Array.from({ length: 40 }, (_, i) => node(`n-${i}`));
     const edges = nodes.flatMap((n, i) => [
       { kind: "message" as const, from: n.key, to: nodes[(i + 1) % 40].key, count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
       { kind: "message" as const, from: n.key, to: nodes[(i + 2) % 40].key, count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
     ]);
+    // Every node has degree 4, so the median is 4 and the floor is 8: nothing
+    // can reach it. Asserted so the next reader knows this shape cannot
+    // exercise the rule, instead of rediscovering it.
     const keep = labelSetFor(nodes, edges, { cap: 12 });
-    expect(keep.size).toBeLessThanOrEqual(12 + 8);
+    expect(keep.size).toBe(12);
   });
 
   it("labels everything when the graph is small enough to fit", () => {
