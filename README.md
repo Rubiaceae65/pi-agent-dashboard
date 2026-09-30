@@ -267,6 +267,9 @@ Source: `packages/server/src/comms-graph/` (extract, indexer, redact, route) and
 `public/graph/` (model, layout, canvas, page). Tests:
 `packages/server/src/comms-graph/__tests__/`.
 
+Where every field comes from, how the footprint was measured, and the three
+bugs that measurement found: [`docs/comms-graph.md`](docs/comms-graph.md).
+
 ## Chinese UI
 
 PI Dashboard now includes a lightweight Simplified Chinese interface for the core operator workflow: onboarding, the session sidebar, chat composer, connection banners, Settings, provider setup, and package management.
