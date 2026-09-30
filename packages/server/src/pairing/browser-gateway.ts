@@ -17,6 +17,7 @@ import type { EventStore } from "../persistence/memory-event-store.js";
 import type { PreferencesStore } from "../persistence/preferences-store.js";
 import type { PiGateway } from "../pi/pi-gateway.js";
 import type { SessionManager } from "../session/memory-session-manager.js";
+import { withRlmChildrenInSnapshot } from "../session/rlm-subagent-snapshot.js";
 import type { SessionOrderManager } from "../session/session-order-manager.js";
 // PendingLoadManager removed — server loads sessions directly via DirectoryService
 import { createHeadlessPidRegistry, type HeadlessPidRegistry } from "../spawn-process/headless-pid-registry.js";
@@ -1545,9 +1546,16 @@ export function createBrowserGateway(
       const snapshot = typeof sessionManager.buildSnapshot === "function"
         ? sessionManager.buildSnapshot(pinnedDirs)
         : { sessions: sessionManager.listAll(), orders: {} as Record<string, string[]>, endedTotals: {} as Record<string, number> };
+      // prime-agent rlm children are NOT registered with the session manager —
+      // they are in-process sub-sessions that never send `session_register` — so
+      // `buildSnapshot()` cannot know about them. The client REPLACES its whole
+      // session Map on this frame, so a child missing here is a child the
+      // dashboard never shows, even though `GET /api/sessions` lists it. Merge
+      // them in with the same precedence as the REST route.
+      // See change: surface-rlm-subagent-children.
       sendTo(ws, {
         type: "sessions_snapshot",
-        ...snapshot,
+        ...withRlmChildrenInSnapshot(snapshot),
         // Archived counts come from the index, not the (non-resident) sessions.
         // See change: archive-sessions-lazy-load.
         archivedCountByCwd: sessionArchive?.countsByKey() ?? {},

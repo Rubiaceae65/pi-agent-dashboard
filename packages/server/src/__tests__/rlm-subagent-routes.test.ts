@@ -27,7 +27,18 @@ const INV_COMPONENTS = "01a0f18f-6154-709b-92d4-766431b6067d";
 const RESEARCH_PRIOR_ART = "01a0f18f-7d8d-760c-881d-efcb0b8db6f1";
 const MAP_REVIEW = "01a0f18f-8ffc-75b9-841b-052732d446f4";
 const SURVEY_PLANNER = "01a0f190-132d-7169-9f31-63bdea399a3f".replace("a3f", "a5f");
-const NOW = Date.parse("2026-09-30T10:00:00.000Z");
+/**
+ * Base time for the fixture mtimes, taken from the REAL clock.
+ *
+ * This was a hardcoded `2026-09-30T10:00:00Z`, which made this file a time
+ * bomb: the scanner downgrades a `running` child to `ended` after 15 minutes of
+ * transcript silence (RLM_RUNNING_STALE_MS), so a test that pinned mtimes to a
+ * fixed past instant passed only while that instant was recent, and started
+ * failing on its own with no code change. Caught 2026-09-30 when this test
+ * failed at 10:23 having passed at 10:00. Anything that must be "1 minute ago"
+ * has to be 1 minute ago from NOW.
+ */
+const NOW = Date.now();
 const CHILD_IDS = [INV_COMPONENTS, RESEARCH_PRIOR_ART, MAP_REVIEW, SURVEY_PLANNER];
 
 let home: string;
