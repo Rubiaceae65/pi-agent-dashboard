@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   ancestorKeys,
   clusterByLead,
+  dataRouteCandidates,
   isFinished,
   leadList,
   messagesForNode,
@@ -158,5 +159,18 @@ describe("recency reads as words", () => {
     expect(recency(ago(180), NOW)).toBe("3h");
     expect(recency(ago(60 * 24), NOW)).toBe("1d");
     expect(recency(ago(180 * 24), NOW)).toBe("3d");
+  });
+});
+
+describe("the data route is tried relative first, then absolute", () => {
+  it("puts the gateway's same-prefix route first", () => {
+    expect(dataRouteCandidates("/graph/")).toEqual(["/graph/api/graph", "/api/comms/graph"]);
+  });
+  it("resolves against the directory the page is actually served from", () => {
+    expect(dataRouteCandidates("/graph/index.html")).toEqual(["/graph/api/graph", "/api/comms/graph"]);
+    expect(dataRouteCandidates("/somewhere/else/graph/")[0]).toBe("/somewhere/else/graph/api/graph");
+  });
+  it("never proposes a cross-origin URL", () => {
+    for (const c of dataRouteCandidates("/graph/")) expect(c.startsWith("/")).toBe(true);
   });
 });

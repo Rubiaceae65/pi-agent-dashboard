@@ -14,10 +14,19 @@
  */
 import { diffEdges, GraphRenderer } from "./graph.js";
 import { hitEdge, hitTest, layout, signature } from "./layout.js";
-import { clusterByLead, leadList, messagesForNode, recency, STATES, selectGraph, stateOf, WINDOWS } from "./model.js";
+import { clusterByLead, dataRouteCandidates, leadList, messagesForNode, recency, STATES, selectGraph, stateOf, WINDOWS } from "./model.js";
 
-const ROUTE = "/api/comms/graph";
+/**
+ * Candidates, relative first: behind the panels gateway `/graph/api/` is this
+ * route's own mount, so the page never leaves the origin; on the dashboard
+ * alone the relative one 404s once and the absolute one answers. Whichever
+ * answers is remembered, so the fallback is paid once per page load, not per
+ * poll. See `dataRouteCandidates` in model.js, which is where the rule is
+ * tested.
+ */
+const ROUTES = dataRouteCandidates(globalThis.location?.pathname ?? "/graph/");
 const POLL_MS = 2000;
+let routeIndex = 0;
 
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas");
@@ -264,7 +273,12 @@ async function poll() {
   inFlight = true;
   const q = graph.seq ? `?since=${graph.seq}` : "";
   try {
-    const res = await fetch(ROUTE + q, { headers: { accept: "application/json" } });
+    let res = await fetch(ROUTES[routeIndex] + q, { headers: { accept: "application/json" } });
+    if (!res.ok && routeIndex < ROUTES.length - 1) {
+      // One 404, once: try the next candidate and remember it for good.
+      routeIndex += 1;
+      res = await fetch(ROUTES[routeIndex] + q, { headers: { accept: "application/json" } });
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json();
     if (body.changed) {

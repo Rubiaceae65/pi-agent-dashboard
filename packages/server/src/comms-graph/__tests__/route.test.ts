@@ -96,9 +96,25 @@ describe("the route", () => {
     expect(body.edges[0]).toMatchObject({ from: "alpha", to: "beta", count: 1 });
   });
 
-  it("is read-only: there is no POST handler, so POST is a 404", async () => {
+  it("is read-only: a POST never returns a graph, with or without a client build", async () => {
     const res = await fetch(`${base}${COMMS_GRAPH_ROUTE}`, { method: "POST", body: "{}" });
-    expect(res.status).toBe(404);
+    // The ORIGINAL assertion here was `expect(res.status).toBe(404)`, and it
+    // passed only because this test boots the server with no client build. The
+    // moment a built client exists, the dashboard's SPA fallback
+    // (`setNotFoundHandler` -> `sendFile("index.html")`) answers every unmatched
+    // request with 200 and the shell - including a POST to an API path. So the
+    // status code is a property of the DEPLOYMENT, not of this route.
+    //
+    // The claim worth protecting is the safety one: there is no POST handler, so
+    // a POST cannot mutate anything, and it cannot come back holding a graph
+    // either. That is asserted here instead, and it holds in both deployments.
+    const body = await res.text();
+    expect(res.status === 404 || res.status === 200).toBe(true);
+    if (res.status === 200) {
+      expect(res.headers.get("content-type") ?? "").toContain("text/html");
+    }
+    expect(body).not.toContain('"edges"');
+    expect(body).not.toContain('"nodes"');
   });
 
   it("answers `since` with a few hundred bytes when nothing moved", async () => {

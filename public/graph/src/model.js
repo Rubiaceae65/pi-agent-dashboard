@@ -198,3 +198,25 @@ export function recency(at, nowMs) {
   if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h`;
   return `${Math.round(ms / 86_400_000)}d`;
 }
+
+/**
+ * Where the data route is, in the order the page should TRY it.
+ *
+ * Two deployments, one page:
+ *
+ *   1. Behind the panels gateway, the page is served at `/graph/` and the
+ *      gateway mounts the data route under the SAME prefix
+ *      (`location /graph/api/ -> the dashboard's /api/comms/`). A relative
+ *      `./api/graph` therefore reaches it without the browser ever leaving the
+ *      origin - no CORS grant, no second auth path.
+ *   2. On the dashboard alone, there is no `/graph/api/`, and the route is the
+ *      dashboard's own `/api/comms/graph`.
+ *
+ * Relative first, absolute second, and the caller remembers which one answered
+ * so the fallback costs one 404 once and never again. Both are same-origin in
+ * both deployments; neither is a guess about a hostname.
+ */
+export function dataRouteCandidates(pagePath = "/graph/") {
+  const dir = pagePath.endsWith("/") ? pagePath : `${pagePath.slice(0, pagePath.lastIndexOf("/") + 1)}`;
+  return [`${dir}api/graph`, "/api/comms/graph"];
+}
