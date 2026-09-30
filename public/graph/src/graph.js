@@ -140,6 +140,20 @@ export class GraphRenderer {
       this.start();
     }
 
+    // WHICH NODES GET A LABEL, and this is the readability requirement.
+    //
+    // The first version labelled every node. At 234 nodes that is not a graph,
+    // it is a wall of overlapping text: the screenshot proved it, and the brief
+    // asks for readability at 100+ sessions. So labels are rationed:
+    //
+    //   - a node is labelled if it is hovered or selected, always;
+    //   - otherwise the top `labelBudget` by "how much happened here", which is
+    //     the same measure the eye should use: a lead with 16 messages matters
+    //     more than a node that received one message hours ago.
+    //
+    // The budget scales down as the graph grows, so the count of labels on
+    // screen stays roughly constant instead of growing with the corpus.
+    const labelled = this.labelSet();
     for (const n of this.nodes || []) {
       const p = this.pos.get(n.key);
       if (!p) continue;
@@ -157,7 +171,8 @@ export class GraphRenderer {
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-      ctx.fillStyle = isSel ? TEXT : TEXT_DIM;
+      if (!labelled.has(n.key)) continue;
+      ctx.fillStyle = isSel || this.hover === n.key ? TEXT : TEXT_DIM;
       ctx.font = `${isSel ? "600 " : ""}11px ui-sans-serif, system-ui, sans-serif`;
       ctx.fillText(labelFor(n), p.x + r + 4, p.y + 4);
       if (n.cluster) {
@@ -166,6 +181,27 @@ export class GraphRenderer {
         ctx.fillText(`${n.childWorking || 0}/${n.childCount - (n.childGone || 0)}`, p.x - 12, p.y + r + 12);
       }
     }
+  }
+
+  /**
+   * The set of node keys that get a label this frame.
+   *
+   * Exported behaviour, not a private detail: `graph.test.ts` asserts the count
+   * stays bounded as the node count grows, because "we drew a label for every
+   * node" is precisely the bug the first screenshot caught.
+   */
+  labelSet(budget) {
+    const nodes = this.nodes || [];
+    const cap = budget ?? Math.max(12, Math.round(46 / Math.max(1, Math.sqrt(nodes.length / 40))));
+    const score = (n) => (n.cluster ? 1000 + n.childCount : 0) + (n.messagesIn || 0) + (n.messagesOut || 0);
+    const sorted = [...nodes].sort((a, b) => score(b) - score(a));
+    const keep = new Set();
+    for (const n of sorted) {
+      if (keep.size >= cap) break;
+      keep.add(n.key);
+    }
+    for (const k of [this.selected, this.hover]) if (k) keep.add(k);
+    return keep;
   }
 
   setGraph(nodes, edges, pos) {

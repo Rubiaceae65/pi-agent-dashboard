@@ -220,3 +220,21 @@ export function dataRouteCandidates(pagePath = "/graph/") {
   const dir = pagePath.endsWith("/") ? pagePath : `${pagePath.slice(0, pagePath.lastIndexOf("/") + 1)}`;
   return [`${dir}api/graph`, "/api/comms/graph"];
 }
+
+/**
+ * Does this response actually carry the graph?
+ *
+ * NOT `res.ok`. On the dashboard alone there is no `/graph/api/`, and the SPA
+ * fallback answers an unmatched path with **200 and the HTML shell** - for POST
+ * as well as GET. A 200 is therefore not evidence that the route exists, and
+ * trusting it is how the page ends up saying "offline: Unexpected token '<'"
+ * while the data was one request away. Measured, not assumed: the first
+ * relative-first build did exactly that.
+ *
+ * Content type is the honest test, and the status still matters: a 404 or 500
+ * is a miss whatever the content type says.
+ */
+export function isGraphResponse(status, contentType) {
+  if (status !== 200) return false;
+  return (contentType ?? "").toLowerCase().includes("application/json");
+}

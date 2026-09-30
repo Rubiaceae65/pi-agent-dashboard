@@ -14,7 +14,7 @@
  */
 import { diffEdges, GraphRenderer } from "./graph.js";
 import { hitEdge, hitTest, layout, signature } from "./layout.js";
-import { clusterByLead, dataRouteCandidates, leadList, messagesForNode, recency, STATES, selectGraph, stateOf, WINDOWS } from "./model.js";
+import { clusterByLead, dataRouteCandidates, isGraphResponse, leadList, messagesForNode, recency, STATES, selectGraph, stateOf, WINDOWS } from "./model.js";
 
 /**
  * Candidates, relative first: behind the panels gateway `/graph/api/` is this
@@ -274,12 +274,16 @@ async function poll() {
   const q = graph.seq ? `?since=${graph.seq}` : "";
   try {
     let res = await fetch(ROUTES[routeIndex] + q, { headers: { accept: "application/json" } });
-    if (!res.ok && routeIndex < ROUTES.length - 1) {
-      // One 404, once: try the next candidate and remember it for good.
+    let good = isGraphResponse(res.status, res.headers.get("content-type"));
+    if (!good && routeIndex < ROUTES.length - 1) {
+      // One miss, once: try the next candidate and remember it for good. A
+      // miss is a 404 OR a 200 that is not JSON - the dashboard's SPA fallback
+      // answers an unmatched path with 200 and the HTML shell.
       routeIndex += 1;
       res = await fetch(ROUTES[routeIndex] + q, { headers: { accept: "application/json" } });
+      good = isGraphResponse(res.status, res.headers.get("content-type"));
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!good) throw new Error(`HTTP ${res.status} from ${ROUTES[routeIndex]}`);
     const body = await res.json();
     if (body.changed) {
       const prevEdges = graph.edges;

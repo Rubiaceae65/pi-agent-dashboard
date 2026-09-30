@@ -16,6 +16,7 @@ import {
   ancestorKeys,
   clusterByLead,
   dataRouteCandidates,
+  isGraphResponse,
   isFinished,
   leadList,
   messagesForNode,
@@ -172,5 +173,17 @@ describe("the data route is tried relative first, then absolute", () => {
   });
   it("never proposes a cross-origin URL", () => {
     for (const c of dataRouteCandidates("/graph/")) expect(c.startsWith("/")).toBe(true);
+  });
+});
+
+describe("a 200 is not proof the route exists", () => {
+  it("accepts only a JSON 200", () => {
+    expect(isGraphResponse(200, "application/json; charset=utf-8")).toBe(true);
+    expect(isGraphResponse(200, "text/html; charset=utf-8")).toBe(false);
+    expect(isGraphResponse(200, null)).toBe(false);
+  });
+  it("rejects a miss whatever the content type says", () => {
+    expect(isGraphResponse(404, "application/json")).toBe(false);
+    expect(isGraphResponse(500, "application/json")).toBe(false);
   });
 });
