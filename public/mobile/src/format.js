@@ -126,7 +126,7 @@ export function messageLines(message) {
   }
   const content = message.content;
   if (typeof content === "string" || content === undefined || content === null) {
-    if (typeof message.text === "string") out.push({ cls: "text", text: clip(message.text) });
+    out.push(...stringMessageLines(content, message.text));
   } else if (Array.isArray(content)) {
     for (const block of content) out.push(...blockLines(block));
   } else {
@@ -144,6 +144,31 @@ export function messageLines(message) {
       text: `usage: in ${fmt(u.input)} · out ${fmt(u.output)} · cacheRead ${fmt(u.cacheRead)} · cacheWrite ${fmt(u.cacheWrite)}`,
     });
   }
+  return out;
+}
+
+/**
+ * A message whose body is a bare STRING -> lines. The bug this exists for, in
+ * its own paragraph so it cannot be re-introduced by an edit to `messageLines`:
+ *
+ * A producer may put the body in `content` as a string — NOT a block array.
+ * Every plain-text USER message does, from the send_prompt path and from the
+ * OpenAI chat-completions bridge. The pre-fix reader branched on
+ * `typeof content === "string"` and then went on to read ONLY `message.text`,
+ * so `content` was discarded and the turn drew
+ * "(user with no renderable content)": the owner's own words, gone, on a
+ * client whose stated rule is that nothing is ever dropped.
+ *
+ * So BOTH fields are read, and BOTH are drawn when a producer sends both —
+ * neither one is allowed to win merely by being read first. An empty string
+ * contributes nothing, so a message that is genuinely empty still falls
+ * through to the "(… with no renderable content)" line rather than drawing a
+ * blank bubble.
+ */
+function stringMessageLines(content, text) {
+  const out = [];
+  if (typeof content === "string" && content !== "") out.push({ cls: "text", text: clip(content) });
+  if (typeof text === "string" && text !== "" && text !== content) out.push({ cls: "text", text: clip(text) });
   return out;
 }
 

@@ -236,6 +236,71 @@ test.describe("phone client /mobile/", () => {
     await expect(page.locator("#dtitle")).not.toHaveText(/^[0-9a-f-]{36}$/);
   });
 
+  test("a message whose `content` is a plain STRING renders, and so does `text`", async ({ page }) => {
+    // The drop-the-string bug, 2026-09-30. `messageLines()` branched on
+    // `typeof content === "string"` and then read ONLY `message.text`, so every
+    // producer that puts the body in `content` as a string — a plain-text USER
+    // message — drew "(user with no renderable content)" and the text was
+    // gone. That contradicts this module's own "nothing is dropped" rule, and
+    // the generic banned-string check above CANNOT catch it: the bubble is
+    // legal text that simply says nothing. So the assertion here is that the
+    // recorded strings are VISIBLE, not that some marker is absent.
+    const replay = JSON.parse(
+      readFileSync(join(FIXTURES, "synthetic-string-content.jsonl"), "utf8")
+        .split("\n")
+        .find((l) => l.trim())!,
+    );
+    const messages = replay.events.map((e: { event: { data: { message: { content?: unknown; text?: unknown } } } }) =>
+      e.event.data.message,
+    );
+    await openSession(page, replay.sessionId);
+    // `textContent`, not `innerText`: innerText re-inserts a newline at every
+    // VISUAL wrap, so on a 390px phone a sentence the reader can see in full
+    // fails a `toContain` on the unbroken string. Verified — this assertion
+    // failed against a page that was rendering the text correctly.
+    const logText = async () => (await page.locator("#log").textContent()) ?? "";
+
+    for (const m of messages) {
+      for (const field of ["content", "text"] as const) {
+        const v = m[field];
+        if (typeof v !== "string" || v === "") continue; // the empty case is asserted below
+        // Only the head: the client's one transformation is clipping past 400
+        // chars, and this mirrors the "real payload data is VISIBLE" test.
+        const head = v.slice(0, 60);
+        // POLLED, not read once: the fixture server streams the replay frame by
+        // frame and the client redraws on each one, so a single read after
+        // "the log has 5 messages" races the tail of the stream. Polling also
+        // keeps the check honest — a dropped string NEVER appears, so the poll
+        // times out and fails rather than passing on an early read.
+        await expect
+          .poll(logText, { timeout: 15_000, message: `message.${field} was dropped: ${JSON.stringify(v.slice(0, 80))}` })
+          .toContain(head);
+      }
+    }
+
+    const body = await logText();
+    // Both fields present -> BOTH must be drawn, not one silently winning.
+    const both = messages.find((m: { content?: unknown; text?: unknown }) => typeof m.text === "string" && typeof m.content === "string");
+    expect(body).toContain(String(both.content).slice(0, 60));
+    expect(body).toContain(String(both.text).slice(0, 60));
+
+    // A long string is clipped, and says so rather than silently truncating.
+    expect(body).toMatch(/chars total/);
+
+    // An EMPTY string is the one case where "no renderable content" is the
+    // correct output — asserted so the fix above cannot become "print an empty
+    // bubble for a message that has nothing in it".
+    expect(body).toContain("with no renderable content");
+
+    // And the user turn must be a `user` bubble, not styled as the assistant.
+    const bubble = page.locator("#log .msg").filter({ hasText: "string content: the owner typed this" }).first();
+    await expect(bubble).toBeVisible();
+    // `.who` is "#<seq> you" — the seq is the render test's stable hook, so
+    // assert the role word is in there, not that it is the whole string.
+    await expect(bubble.locator(".who")).toHaveText(/\byou\b/);
+    await expect(bubble).toHaveClass(/\buser\b/);
+  });
+
   test("a payload shape the client has never seen still renders its keys", async ({ page }) => {
     // The forward-compatibility case. `synthetic-unknown-shape.jsonl` holds a
     // REAL recorded stats_update with its type renamed and a nested object
