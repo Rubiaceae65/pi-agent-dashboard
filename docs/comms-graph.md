@@ -1,8 +1,27 @@
 # The comms graph: what it reads, what it costs, and how it was measured
 
-Companion to the `/graph/` section of the README. Every number here was measured
+Companion to the `/graph/` section of the README. The images are captures of
+the page running in a sandbox against a copy of a real corpus. Every number here was measured
 on this machine; the command that produced it is given so a reader can disagree
 with the number rather than with the vibe.
+
+## What it looks like
+
+| | |
+|---|---|
+| ![converged](shots/comms-graph-live.png) | **Converged**: 528 nodes, 953 edges over a 877-file corpus. Each cluster badge is `folded children / gone children`. |
+| ![filling in](shots/comms-graph-filling-in.png) | **Cold start**, mid-ingest: the page says `filling in… (N nodes so far)` rather than pretending to be complete. |
+| ![node](shots/comms-graph-node-detail.png) | **Click a node**: model, run dir, age, state badges, parent, recent message first lines. |
+| ![edge](shots/comms-graph-edge-detail.png) | **Click an edge**: the messages on it, first lines only. |
+| ![filtered](shots/comms-graph-filtered.png) | **Filters**: last 15 minutes, one lead's subtree, hide finished — `144 nodes · 71 edges · 55 clusters`. |
+| ![hide off](shots/comms-graph-hide-finished-off.png) | The same view with *hide finished* unticked: `223 nodes · 157 edges`. The pair is the regression evidence for the filter. |
+
+Node colours: green working, blue idle, amber stalled (silent for 45 minutes
+while the daemon still calls it working), red error, grey gone, dim unknown.
+A red cluster in these captures is real: 169 `agent_status` records in this
+corpus carry `taskState: "error"` with the summary
+`Model request failed: Provider rate limit exceeded ... Token Plan usage limit
+reached` — the day's 429 storm, drawn as what it was.
 
 ## Where the facts come from
 
