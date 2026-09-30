@@ -112,6 +112,8 @@ export interface IndexerStats {
   linesDropped: number;
   /** Records skipped because one line exceeded a whole tick's budget. */
   linesSkipped: number;
+  /** Directories the walk was not allowed to read - nodes it will never show. */
+  dirsUnreadable: number;
   truncated: boolean;
   lastScanMs: number;
   lastScanAt: string | null;
@@ -221,6 +223,7 @@ export class CommsGraphIndexer {
     const rd = this.counters.recentDropped;
     const ld = this.counters.linesDropped;
     const ls = this.counters.linesSkipped;
+    const du = this.counters.dirsUnreadable;
     const scans = this.counters.scans;
     this.counters = blankStats();
     this.counters.filesTracked = files;
@@ -229,6 +232,7 @@ export class CommsGraphIndexer {
     this.counters.recentDropped = rd;
     this.counters.linesDropped = ld;
     this.counters.linesSkipped = ls;
+    this.counters.dirsUnreadable = du;
     this.counters.scans = scans;
   }
 
@@ -411,8 +415,19 @@ export class CommsGraphIndexer {
     let entries: fs.Dirent[];
     try {
       entries = await fsp.readdir(dir, { withFileTypes: true });
-    } catch {
-      return; // absent on a fresh install; that is not an error
+    } catch (err) {
+      // ENOENT is a fresh install and is not an error. A directory we are NOT
+      // allowed to read is a different thing entirely: it holds sessions the
+      // graph will silently never show, and the snapshot was about to claim it
+      // had read everything. The corpus walk swallowed EACCES here and the page
+      // said "live - 206 nodes" over a corpus with 890 sessions in it, with
+      // `truncated: false`. A missing permission is a MISSING NODES signal.
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EACCES" || code === "EPERM" || code === "ELOOP" || code === "ENOTDIR") {
+        this.truncated = true;
+        this.counters.dirsUnreadable++;
+      }
+      return;
     }
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
@@ -868,6 +883,7 @@ function blankStats(): IndexerStats {
     recentDropped: 0,
     linesDropped: 0,
     linesSkipped: 0,
+    dirsUnreadable: 0,
     truncated: false,
     lastScanMs: 0,
     lastScanAt: null,

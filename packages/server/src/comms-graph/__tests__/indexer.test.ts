@@ -441,3 +441,31 @@ describe("a slow client", () => {
     expect(ix.snapshot().seq).toBeGreaterThan(0);
   });
 });
+
+describe("a corpus it is not allowed to read is not a corpus it has read", () => {
+  it("says truncated when a root cannot be listed, instead of quietly dropping it", async () => {
+    // A FILE where a directory belongs: ENOTDIR, deterministic whatever uid the
+    // suite runs as. The real incident was EACCES on session-artifacts, which
+    // made the page report 206 nodes and `truncated: false` over a corpus with
+    // 890 sessions in it - every rlm child silently missing.
+    const primeDir = fs.mkdtempSync(path.join(os.tmpdir(), "comms-graph-unreadable-"));
+    fs.mkdirSync(path.join(primeDir, "sessions"), { recursive: true });
+    fs.writeFileSync(path.join(primeDir, "session-artifacts"), "not a directory\n");
+    const ix = new CommsGraphIndexer({ primeDir, minIntervalMs: 0 });
+    await ix.scan();
+    const s = ix.stats();
+    expect(s.dirsUnreadable).toBe(1);
+    expect(s.truncated).toBe(true);
+    fs.rmSync(primeDir, { recursive: true, force: true });
+  });
+
+  it("stays quiet about a root that simply is not there", async () => {
+    const primeDir = fs.mkdtempSync(path.join(os.tmpdir(), "comms-graph-absent-"));
+    fs.mkdirSync(path.join(primeDir, "sessions"), { recursive: true });
+    const ix = new CommsGraphIndexer({ primeDir, minIntervalMs: 0 });
+    await ix.scan();
+    expect(ix.stats().dirsUnreadable).toBe(0);
+    expect(ix.stats().truncated).toBe(false);
+    fs.rmSync(primeDir, { recursive: true, force: true });
+  });
+});
