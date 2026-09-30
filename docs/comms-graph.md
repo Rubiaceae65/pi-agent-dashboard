@@ -15,6 +15,7 @@ with the number rather than with the vibe.
 | ![edge](shots/comms-graph-edge-detail.png) | **Click an edge**: the messages on it, first lines only. |
 | ![filtered](shots/comms-graph-filtered.png) | **Filters**: last 15 minutes, one lead's subtree, hide finished — `144 nodes · 71 edges · 55 clusters`. |
 | ![hide off](shots/comms-graph-hide-finished-off.png) | The same view with *hide finished* unticked: `223 nodes · 157 edges`. The pair is the regression evidence for the filter. |
+| ![hub](shots/comms-graph-hub-labelled.png) | **The hub is named.** `mail-consumer-rework-20260930 +2`, bottom centre, with ~20 children radiating from it. It was unlabelled in the first converged capture: the label budget scored on message volume, and the busiest thing on the canvas is a quiet node. Labels are now guaranteed for any node whose degree in the drawn graph is at least `max(4, 2 × median degree)`, capped at 8 hubs. |
 
 Node colours: green working, blue idle, amber stalled (silent for 45 minutes
 while the daemon still calls it working), red error, grey gone, dim unknown.
