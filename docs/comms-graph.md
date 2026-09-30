@@ -107,3 +107,25 @@ PRIME_AGENT_HOME=/path/to/copy node --expose-gc --import tsx \
 Note the permissions: if `session-artifacts` is not readable by the server's
 user, the child sessions are missing. That is now visible in
 `stats.dirsUnreadable` and in `truncated`, instead of being a graph that lies.
+
+## The habit this repo is most prone to
+
+Four checks in this feature were right only on the data they were tested with,
+and each was found the same way — by someone breaking it or looking at a
+picture rather than by a test failing:
+
+* `truncated` was only set when more files were queued. Every corpus in the repo
+  had more than one file in it.
+* `readdir` EACCES was swallowed like ENOENT, so an unreadable
+  `session-artifacts` removed every rlm child while the snapshot claimed to be
+  complete.
+* The label budget scored on message volume, so the busiest node on the canvas —
+  a quiet one — went unlabelled.
+* The test guarding the hub-label cap asserted `<= cap + 8` on a **regular**
+  graph, where a `2 x median` rule can never fire at all. It passed with the cap
+  set to 100000. The fixture is now skewed (12 connectors, 30 leaves), and the
+  test fails when the cap is removed.
+
+So the rule for anything added here: **make the check fail before you believe
+it.** Break the guard, lower the bound, feed it the shape it was never written
+for. A green test that has never been observed red is a comment.
