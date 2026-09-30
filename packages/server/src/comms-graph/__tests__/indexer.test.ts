@@ -126,6 +126,47 @@ describe("incremental reads", () => {
     expect(ix.snapshot().edges).toHaveLength(1);
   });
 
+  it("advances past a line bigger than a whole tick's budget instead of re-reading it forever", async () => {
+    // THE REGRESSION THIS EXISTS FOR. The real corpus has a 1.6 MB single
+    // record — a transcript entry carrying a whole pasted document — which is
+    // six times the 256 KB per-tick budget. The first version of tail()
+    // returned early when no newline fitted in the window, without moving the
+    // cursor, so that file was re-read from the same offset on every tick
+    // forever: `truncated` never cleared, the graph never converged, and the
+    // "steady state" measurement reported 6.5 MB of reads per tick and called
+    // it a leak when it was a stall. Found by measuring, not by reading.
+    const dir = fixtureDir();
+    const budget = 4 * 1024;
+    // beta exists as a real session, so the target's sessionId resolves to a
+    // name and the assertion is about the EDGE rather than about resolution.
+    writeSession(dir, LEAD_B, [
+      header(LEAD_B),
+      JSON.stringify({ type: "session_info", name: "beta", timestamp: "2026-09-30T10:00:00.000Z" }),
+    ]);
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A)]);
+    const huge = "x".repeat(40 * 1024); // ten times the budget
+    fs.appendFileSync(
+      p,
+      `${JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })}\n${huge}\n${msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "after the monster")}\n`,
+    );
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxBytesPerScan: budget });
+    // do-while, deliberately: `truncated` is false BEFORE the first scan, so a
+    // while-loop guard written the obvious way runs zero ticks and asserts
+    // nothing. (This test asserted an empty edge list and passed that way once.)
+    let ticks = 0;
+    do {
+      await ix.scan();
+      ticks++;
+    } while (ix.stats().truncated && ticks < 100);
+    // It converges, and it converges in a bounded number of ticks: the cursor
+    // moves past the long line rather than stalling on it.
+    expect(ix.stats().truncated).toBe(false);
+    expect(ticks).toBeLessThan(100);
+    // and the record AFTER the long line was still read — skipping one
+    // oversized line must not cost the rest of the file
+    expect(ix.snapshot().edges.map((e) => `${e.from}->${e.to}`)).toContain("alpha->beta");
+  });
+
   it("re-reads from zero when a file is replaced by a SHORTER one (rotation)", async () => {
     const dir = fixtureDir();
     const p = writeSession(dir, LEAD_A, [header(LEAD_A), msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "one"), msg("alpha", "beta", "m2", "2026-09-30T10:02:00.000Z", "two")]);

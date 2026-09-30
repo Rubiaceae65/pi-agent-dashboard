@@ -110,6 +110,8 @@ export interface IndexerStats {
   edgesDropped: number;
   recentDropped: number;
   linesDropped: number;
+  /** Records skipped because one line exceeded a whole tick's budget. */
+  linesSkipped: number;
   truncated: boolean;
   lastScanMs: number;
   lastScanAt: string | null;
@@ -218,6 +220,7 @@ export class CommsGraphIndexer {
     const ed = this.counters.edgesDropped;
     const rd = this.counters.recentDropped;
     const ld = this.counters.linesDropped;
+    const ls = this.counters.linesSkipped;
     const scans = this.counters.scans;
     this.counters = blankStats();
     this.counters.filesTracked = files;
@@ -225,6 +228,7 @@ export class CommsGraphIndexer {
     this.counters.edgesDropped = ed;
     this.counters.recentDropped = rd;
     this.counters.linesDropped = ld;
+    this.counters.linesSkipped = ls;
     this.counters.scans = scans;
   }
 
@@ -452,6 +456,28 @@ export class CommsGraphIndexer {
   private async tail(file: string, budget: number): Promise<number> {
     const cur = this.cursors.get(file);
     if (!cur) return budget;
+    /**
+     * THE SECOND BUG THIS MODULE HAD, and the more dangerous one.
+     *
+     * `truncated` used to be set only when the budget ran out with MORE FILES
+     * still queued. So if the LAST file consumed the whole budget and still
+     * had unread bytes, the tick ended with `truncated === false` and the
+     * server told the page "here is the complete graph" about a graph it had
+     * read a quarter of.
+     *
+     * A cold start over the 336 MB corpus happened to converge anyway, because
+     * with 877 files there was almost always another one queued — which is
+     * exactly how a wrong check survives: it is right on the data you tested
+     * it with. A corpus of one large file would have reported a partial graph
+     * as a whole one, silently, forever.
+     *
+     * So truncation is now a property of the FILE, not of the loop: every
+     * return path asks whether this file still has bytes we have not read.
+     */
+    const settle = (spent: number): number => {
+      if (cur.offset < cur.size) this.truncated = true;
+      return spent;
+    };
     let st: fs.Stats;
     try {
       st = await fsp.stat(file);
@@ -461,6 +487,7 @@ export class CommsGraphIndexer {
       if (i >= 0) this.cursorOrder.splice(i, 1);
       return budget;
     }
+    const prevSize = cur.size;
     cur.size = st.size;
     if (st.ino !== cur.ino || st.size < cur.offset) {
       // Rotated or rewritten. Re-read from zero: skipping because the cursor is
@@ -469,19 +496,54 @@ export class CommsGraphIndexer {
       cur.ino = st.ino;
       cur.name = null;
     }
+    cur.size = st.size;
     if (st.size === cur.offset) return budget;
 
     const want = Math.min(budget, st.size - cur.offset);
-    if (want <= 0) return budget;
+    if (want <= 0) return settle(budget);
     const fh = await fsp.open(file, "r");
     try {
       const buf = Buffer.allocUnsafe(want);
       const { bytesRead } = await fh.read(buf, 0, want, cur.offset);
-      if (bytesRead <= 0) return budget;
+      if (bytesRead <= 0) return settle(budget);
       this.counters.bytesRead += bytesRead;
       const text = buf.toString("utf8", 0, bytesRead);
       const lastNl = text.lastIndexOf("\n");
-      if (lastNl < 0) return budget; // no complete line yet; wait for the newline
+      if (lastNl < 0) {
+        // No newline in the window. TWO different situations, and treating them
+        // the same is how this file was broken once already.
+        //
+        // (a) There is more file past the window. Then this line is simply
+        //     bigger than a whole tick's budget, and the cursor MUST move or
+        //     the next tick re-reads the same bytes forever. The real corpus
+        //     has a 1.6 MB single record — a transcript entry carrying a whole
+        //     pasted document — six times the 256 KB budget. Skip to the next
+        //     newline: a record that large is not a graph fact (the facts here
+        //     are headers and small records) and `consume` drops unparseable
+        //     lines anyway. What matters is that the cursor always advances.
+        //
+        // (b) The window ended AT end-of-file. Then it is a tail without a
+        //     newline, and the only question is whether a writer is still
+        //     adding to it. If the file has not grown since the last tick,
+        //     nothing is writing, so the tail is final: take it as a line and
+        //     stand at EOF. If it HAS grown, an appender is mid-line and the
+        //     right answer is to wait for the newline — skipping here would
+        //     silently drop a message that is a half-second from being sent.
+        const atEof = cur.offset + bytesRead >= st.size;
+        if (!atEof) {
+          cur.offset = await skipToNewline(fh, cur.offset + bytesRead, st.size);
+          this.counters.linesSkipped++;
+          return settle(budget - bytesRead);
+        }
+        if (st.size > prevSize) return settle(budget); // a writer is mid-line: wait
+        const tail = text.trim();
+        if (tail) {
+          this.counters.linesParsed++;
+          this.consume(tail, file, cur);
+        }
+        cur.offset = st.size;
+        return settle(budget - bytesRead);
+      }
       const complete = text.slice(0, lastNl);
       cur.offset += Buffer.byteLength(complete, "utf8") + 1;
       for (const line of complete.split("\n")) {
@@ -489,7 +551,7 @@ export class CommsGraphIndexer {
         this.counters.linesParsed++;
         this.consume(line, file, cur);
       }
-      return budget - bytesRead;
+      return settle(budget - bytesRead);
     } finally {
       await fh.close();
     }
@@ -805,10 +867,35 @@ function blankStats(): IndexerStats {
     edgesDropped: 0,
     recentDropped: 0,
     linesDropped: 0,
+    linesSkipped: 0,
     truncated: false,
     lastScanMs: 0,
     lastScanAt: null,
   };
+}
+
+/**
+ * Advance past an over-long line to the byte after the next newline.
+ *
+ * Bounded by a fixed number of reads and a fixed chunk size, so a pathological
+ * file (one line with no newline in it for a gigabyte) cannot make this loop
+ * unbounded: if no newline turns up, the file's end is returned and the cursor
+ * sits at EOF, which is the same position a truncated line would leave it at.
+ */
+async function skipToNewline(fh: fsp.FileHandle, from: number, size: number): Promise<number> {
+  const CHUNK = 256 * 1024;
+  const buf = Buffer.allocUnsafe(Math.min(CHUNK, Math.max(1, size - from)));
+  let at = from;
+  for (let i = 0; i < 64 && at < size; i++) {
+    const want = Math.min(buf.length, size - at);
+    if (want <= 0) break;
+    const { bytesRead } = await fh.read(buf, 0, want, at);
+    if (bytesRead <= 0) break;
+    const nl = buf.toString("utf8", 0, bytesRead).indexOf("\n");
+    if (nl >= 0) return at + Buffer.byteLength(buf.toString("utf8", 0, bytesRead).slice(0, nl), "utf8") + 1;
+    at += bytesRead;
+  }
+  return size;
 }
 
 function readTs(line: string): string | null {
