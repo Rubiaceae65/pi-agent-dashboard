@@ -173,6 +173,20 @@ describe("the graph it produces", () => {
     expect(b2a).toMatchObject({ kind: "message", count: 1 });
   });
 
+  it("scrubs a credential out of the first line on the way IN, not on the way out", async () => {
+    const dir = fixtureDir();
+    writeSession(dir, LEAD_A, [
+      header(LEAD_A),
+      JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }),
+      msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "planner token: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 is in the config"),
+    ]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const wire = JSON.stringify(ix.snapshot());
+    expect(wire).not.toContain("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    expect(wire).toContain("planner token: [redacted] is in the config");
+  });
+
   it("resolves a target that has no sessionName to the name its own file declares", async () => {
     const dir = fixtureDir();
     // beta's file declares the name; alpha's message names only the sessionId.

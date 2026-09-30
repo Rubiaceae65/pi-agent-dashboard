@@ -176,7 +176,9 @@ import { registerHostGateRoutes } from "./routes/host-gate-routes.js";
 import { registerKnownServersRoutes } from "./routes/known-servers-routes.js";
 import { registerLiveServerRoutes } from "./routes/live-server-routes.js";
 import { registerManifestRoute } from "./routes/manifest-route.js";
+import { registerCommsGraphRoute } from "./comms-graph/route.js";
 import {
+  GRAPH_PREFIX,
   LINKS_PREFIX,
   MOBILE_PREFIX,
   registerStaticSubAppRoute,
@@ -2270,6 +2272,8 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
   // add-same-origin-links-page.
   registerStaticSubAppRoute(fastify, MOBILE_PREFIX);
   registerStaticSubAppRoute(fastify, LINKS_PREFIX);
+  registerStaticSubAppRoute(fastify, GRAPH_PREFIX);
+  registerCommsGraphRoute(fastify);
 
   // Dynamic PWA manifest — MUST be registered before fastify-static so
   // explicit route matching wins over the static asset. See change:

@@ -25,10 +25,11 @@
  * That is the design, not an excuse: the page is useful with 20 sessions and
  * correct with 156 a few seconds later.
  */
-import fs from "node:fs";
+import type fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { extractLine, firstLine, resolveEndpoints, type Endpoint, type LineFact } from "./extract.js";
+import { type Endpoint, extractLine, firstLine, type LineFact, resolveEndpoints } from "./extract.js";
+import { redact } from "./redact.js";
 
 export interface IndexerOptions {
   /** `~/.prime/agent` - the directory holding `sessions/`, `rlm-ledger/`, `session-artifacts/`. */
@@ -483,12 +484,16 @@ export class CommsGraphIndexer {
     const toKey = this.resolveKey(to, cur, file);
     if (fromKey === toKey && from.kind !== "external") return; // not an edge
     const edge = this.edgeFor("message", fromKey, toKey, at);
-    edge.lines.push({ at, firstLine: line });
+    // Scrubbed at INGEST, not at render: a ring that held raw message text
+    // would keep a credential in the dashboard's heap for as long as the edge
+    // existed, and there is no code path that could be trusted to scrub later.
+    const safe = redact(line);
+    edge.lines.push({ at, firstLine: safe });
     while (edge.lines.length > this.opts.perEdgeLines) {
       edge.lines.shift();
       this.counters.linesDropped++;
     }
-    this.recent.push({ at, firstLine: line, from: fromKey, to: toKey });
+    this.recent.push({ at, firstLine: safe, from: fromKey, to: toKey });
     while (this.recent.length > this.opts.maxRecent) {
       this.recent.shift();
       this.counters.recentDropped++;
