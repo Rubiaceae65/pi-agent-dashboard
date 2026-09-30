@@ -20,6 +20,35 @@ const SNAPSHOT_ENDED_GLOBAL = 120;
 const SNAPSHOT_ENDED_PER_GROUP = 3;
 
 /**
+ * Resident cap on ENDED session rows (change: bound-dashboard-memory).
+ *
+ * `unregister` marks a row `ended` and leaves it in the registry, so the
+ * registry grows one row per session that ever ends, for the life of the
+ * process. The snapshot WINDOW (`SNAPSHOT_ENDED_GLOBAL`) bounds what the
+ * dashboard SHOWS, which is why the growth was invisible: the rows are bounded
+ * in what they expose and unbounded in what they hold. Under churn
+ * (many sessions coming and going) this is the dominant steady-state growth.
+ *
+ * The retention tier is therefore bounded at `MAX_RESIDENT_ENDED` NEWEST ended
+ * rows; anything older is EVICTED from the registry. Chosen to be comfortably
+ * above `SNAPSHOT_ENDED_GLOBAL` (120) so the visible window can always be
+ * served from resident rows: at 120 the newest-120 window is exactly the
+ * retained tier, and the per-group first-3 window is a subset of it. A cap of
+ * 120 would make eviction and window selection race at exactly the boundary.
+ * 2x gives headroom for the per-group selection to draw from.
+ *
+ * Eviction is NOT archival. The row is already persisted (the `onUnregister`
+ * seam writes the sidecar) and `restore()` reloads it from disk on the next
+ * boot, so what is lost is the in-memory row, not the session's history. The
+ * `listAll()` surface — which the archive UI and `/api/sessions` page over —
+ * therefore stops returning rows older than the tier, exactly as the snapshot
+ * window already stopped showing them.
+ *
+ * See change: bound-dashboard-memory.
+ */
+export const MAX_RESIDENT_ENDED = 240;
+
+/**
  * Persisted-order read surface the snapshot window needs. Structural subset
  * of `SessionOrderManager`, so the real manager satisfies it directly.
  * See change: fix-connect-snapshot-frame-loss (D4).
@@ -184,6 +213,15 @@ export interface SessionManager {
   /** Called after a session is unregistered (status set to ended). */
   onUnregister?: (sessionId: string) => void;
   /**
+   * Called after an ENDED row is evicted from the registry by the resident
+   * tombstone cap, with every id evicted in that pass. The row is already
+   * persisted; this is the seam for a caller's own mirrors of a session that
+   * is no longer resident (per-cwd order entries, pending registries).
+   * Optional and unset by default — eviction is invisible to a caller that
+   * keeps no mirrors. See change: bound-dashboard-memory.
+   */
+  onEvict?: (sessionIds: string[]) => void;
+  /**
    * Called on the EXACT transition to `ended`, from BOTH seams (`unregister`
    * and `update`), before `onChange`. The eager, durable write point for the
    * terminal `closedReason`: `onUnregister` covers only the unregister seam,
@@ -217,6 +255,44 @@ export function createMemorySessionManager(
   function ensureEndedAt(session: DashboardSession): void {
     if (session.status !== "ended" || session.endedAt !== undefined) return;
     session.endedAt = derive(session);
+  }
+
+  /**
+   * Evict ended rows past `MAX_RESIDENT_ENDED`, oldest first.
+   *
+   * Runs on the `→ ended` transition only. It is O(ended rows) per call and
+   * allocates one array, so the cost is paid on a transition that already
+   * writes a sidecar and broadcasts a frame — not on the hot `update()` path.
+   *
+   * Never evicts a non-ended row, and never fires `onChange`/`onUnregister`:
+   * the row's ending was already announced by the transition that triggered
+   * this, and a second announcement would re-broadcast a `session_removed` for
+   * a card the client is about to drop anyway. `onEvict` is the separate,
+   * opt-in seam a caller uses to drop its own mirrors (the order manager's
+   * per-cwd order, the pending registries).
+   *
+   * See change: bound-dashboard-memory.
+   */
+  function evictEndedOverflow(): string[] {
+    const ended: DashboardSession[] = [];
+    for (const s of sessions.values()) {
+      if (s.status === "ended") ended.push(s);
+    }
+    if (ended.length <= MAX_RESIDENT_ENDED) return [];
+    // Newest kept, oldest evicted — same ordering the global window uses, so
+    // the retained tier IS the window plus the per-group headroom.
+    ended.sort((a, b) => endedSortKey(b) - endedSortKey(a));
+    const evicted: string[] = [];
+    for (let i = MAX_RESIDENT_ENDED; i < ended.length; i++) {
+      const victim = ended[i]!;
+      // Re-check under the sorted view: a row could have been re-registered
+      // (status flipped back off `ended`) between the scan and here.
+      const live = sessions.get(victim.id);
+      if (!live || live.status !== "ended") continue;
+      sessions.delete(victim.id);
+      evicted.push(victim.id);
+    }
+    return evicted;
   }
 
   // ── Snapshot window (D4) — see change: fix-connect-snapshot-frame-loss ──
@@ -440,6 +516,12 @@ export function createMemorySessionManager(
         if (!wasEnded) mgr.onEnded?.(sessionId);
         mgr.onChange?.(sessionId);
         mgr.onUnregister?.(sessionId);
+        // Bound the resident tombstone tier. AFTER the three seams above, so
+        // every mirror that learns about the ending has already been told
+        // before the row leaves the registry.
+        // See change: bound-dashboard-memory.
+        const evicted = evictEndedOverflow();
+        if (evicted.length > 0) for (const id of evicted) mgr.onEvict?.(id);
       }
     },
 
