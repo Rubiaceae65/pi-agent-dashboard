@@ -54,6 +54,7 @@ import {
   type StatusLaneFlags,
 } from "../../lib/session/session-lanes.js";
 import { selectedCardScrollFingerprint } from "../../lib/session/session-list-scroll.js";
+import { indexChildrenByParent, isRlmChild, planNesting, relativeDepths } from "../../lib/session/session-subagents.js";
 import { encodeFolderPath } from "../../lib/util/folder-encoding.js";
 import { truncatePathMiddle } from "../../lib/util/truncate-path.js";
 import { YoloPill } from "../access-grant/YoloIndicators.js";
@@ -2175,6 +2176,37 @@ export function SessionList({ sessions, selectedId, onSelect, revealRequest, onS
             // Tag/phase axes narrow the in-folder set identically to search.
             // See change: add-session-tags.
             if (anyTagFilterActive) matched = matched.filter(passesTagAxes);
+            // rlm sub-agent nesting (change: surface-rlm-subagent-children).
+            // This runs BEFORE the active/ended split below, because a child
+            // is rendered as part of its parent's card and must therefore not
+            // be partitioned as a peer: an active child sorted into the active
+            // tier would render as a top-level card of its own, and an ended
+            // child would sit in the ended bucket under nobody.
+            const subagentPlan = planNesting(matched);
+            const subagentIndex = indexChildrenByParent(matched);
+            // A parent whose descendant is still running must itself be
+            // visible, even when the parent has ended — otherwise the live
+            // child is hidden behind the ended-collapse and the lead looks
+            // idle while work is in flight. This is the one place the
+            // partition is widened by nesting, and only for ACTIVE
+            // descendants, never for finished ones.
+            // Widening the ACTIVE SET, not just a visibility filter. A parent
+            // that ended while a child still runs is placed in the active tier
+            // alongside the live work it is responsible for, because the
+            // ended tier is collapsed by default and a live child hidden
+            // behind that collapse is the exact failure this whole change
+            // exists to stop. `live` is then "this row or something beneath
+            // it is still running", which is what the tier actually means
+            // once a card can contain work of its own.
+            const live = new Set(matched.filter((s) => s.status !== "ended").map((s) => s.id));
+            for (const [parentId, descendants] of subagentPlan.nested) {
+              if (descendants.some((c) => live.has(c.id))) live.add(parentId);
+            }
+            // Orphans (parent filtered out, or in a parent cycle) stay in the
+            // partition so they render flat rather than disappearing.
+            const topLevelRows = [...subagentPlan.topLevel, ...subagentPlan.orphans].filter(
+              (s) => live.has(s.id),
+            );
             // Flat-merge mode: when session-search is active AND no
             // folder filter is typed, don't apply the active-first sort —
             // ended results stay inline with active so the user sees
@@ -2193,19 +2225,16 @@ export function SessionList({ sessions, selectedId, onSelect, revealRequest, onS
             // backfills by endedAt on first load (migration seed).
             // See change: simplify-session-card-ordering.
             const order = sessionOrderMap?.get(group.cwd);
-            const activeSessions = sortSessionsByOrder(
-              matched.filter((s) => s.status !== "ended"),
-              order,
-            );
+            const activeSessions = sortSessionsByOrder(topLevelRows.filter((s) => live.has(s.id)), order);
             const endedSessions = sortSessionsByOrder(
-              matched.filter((s) => s.status === "ended"),
+              topLevelRows.filter((s) => !live.has(s.id)),
               order,
             );
             const showEnded =
               endedSessions.length > 0 &&
               (endedExpanded.has(group.cwd) || sessionSearch.length > 0 || anyTagFilterActive);
             const visibleSessions = flatMergeMode
-              ? sortSessionsByOrder(matched, order) // mixed-status, flat stored order
+              ? sortSessionsByOrder(topLevelRows, order) // mixed-status, flat stored order
               : (showEnded
                   ? [...activeSessions, ...endedSessions]
                   : activeSessions);
@@ -2302,6 +2331,44 @@ export function SessionList({ sessions, selectedId, onSelect, revealRequest, onS
                   )}
                 </SortableSessionCard>
             );
+            // A parent card plus its rlm children, indented one step per
+            // depth. The children are NOT SortableSessionCards and are not in
+            // the SortableContext: a sub-agent has no independent position in
+            // the folder's order — it belongs to its parent, and letting it be
+            // dragged out would leave the tree inconsistent with the stored
+            // order. Depth comes from relativeDepths rather than a second walk.
+            const renderWithChildren = (
+              session: DashboardSession,
+              hold?: { until: number; dest: LaneId },
+            ) => {
+              const descendants = subagentPlan.nested.get(session.id);
+              if (!descendants || descendants.length === 0) return renderCard(session, hold);
+              const depths = relativeDepths(subagentIndex, session.id);
+              return (
+                <React.Fragment key={`n-${session.id}`}>
+                  {renderCard(session, hold)}
+                  {descendants.map((c) => {
+                    const depth = depths.get(c.id) ?? 1;
+                    return (
+                      <div
+                        key={`c-${c.id}`}
+                        data-testid={`subagent-row-${c.id}`}
+                        // The IMMEDIATE parent, not the card this row happens to
+                        // be drawn inside: a grandchild's parent is its own
+                        // child, and writing the lead's id here would make the
+                        // tree unreadable to anything consuming this attribute.
+                        data-subagent-of={c.parentSessionId}
+                        data-subagent-root={session.id}
+                        data-subagent-depth={depth}
+                        className="relative pl-5"
+                      >
+                        {renderCard(c)}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            };
             // Lanes (session-list-group-by): one SortableContext per lane so
             // dnd-kit never visually shifts a card across lanes mid-drag
             // (design D4); ended bucket stays a plain list below all lanes.
@@ -2356,7 +2423,10 @@ export function SessionList({ sessions, selectedId, onSelect, revealRequest, onS
                             <SortableContext items={laneSessions.map((x) => x.id)} strategy={verticalListSortingStrategy}>
                               {laneSessions.map((x) => (
                                 <React.Fragment key={`l-${x.id}`}>
-                                  {renderCard(x, groupMode === "status" ? laneHysteresis.holds.get(x.id) : undefined)}
+                                  {renderWithChildren(
+                                  x,
+                                  groupMode === "status" ? laneHysteresis.holds.get(x.id) : undefined,
+                                )}
                                 </React.Fragment>
                               ))}
                             </SortableContext>
@@ -2383,7 +2453,7 @@ export function SessionList({ sessions, selectedId, onSelect, revealRequest, onS
                           </button>
                         )}
                         {endedSessions.map((x) => (
-                          <React.Fragment key={`e-${x.id}`}>{renderCard(x)}</React.Fragment>
+                          <React.Fragment key={`e-${x.id}`}>{renderWithChildren(x)}</React.Fragment>
                         ))}
                       </SortableContext>
                     </div>
@@ -2438,7 +2508,7 @@ export function SessionList({ sessions, selectedId, onSelect, revealRequest, onS
                           <span>{t("sessionList.hideEnded", undefined, "Hide ended")}</span>
                         </button>
                       )}
-                    {renderCard(session)}
+                    {renderWithChildren(session)}
                     </React.Fragment>
                   );
                 })}
