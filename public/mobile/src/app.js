@@ -18,7 +18,7 @@
  * have already rendered, so a flaky phone link resumes instead of restarting the stream.
  */
 
-<import { buildRow, flattenWithChildren } from './subagents.js';
+import { buildRow, flattenWithChildren } from './subagents.js';
 import { describeEvent, fmt, label, sessionName } from './format.js';
 
 const $ = (s) => document.querySelector(s);
@@ -159,7 +159,7 @@ function renderList() {
     box.appendChild(el('p', 'empty', 'No sessions yet. Spawn one from the desktop dashboard.'));
     return;
   }
-<  // rlm sub-agent children are drawn nested under their lead, not as peers
+  // rlm sub-agent children are drawn nested under their lead, not as peers
   // beside it. See src/subagents.js (change: surface-rlm-subagent-children).
   //
   // The row body is built by buildRow() rather than inline, which is what

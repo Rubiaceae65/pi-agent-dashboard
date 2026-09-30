@@ -164,6 +164,56 @@ test.describe("phone client /mobile/", () => {
     expect(errors, `console/page errors: ${errors.join(" | ")}`).toEqual([]);
   });
 
+  test("a sub-agent child row renders READABLY and stays nested under its lead", async ({ page }) => {
+    // The two branches this branch rebased together each rewrote renderList():
+    // one nested rlm children, the other made every field go through format.js.
+    // This case is the proof that both survived, because it fails if EITHER is
+    // missing:
+    //   - no nesting attributes  -> flattenWithChildren/buildRow was lost
+    //   - "[object Object]"      -> the formatting guarantee was lost
+    // The fixture's depth-2 child carries OBJECT cwd/title/model, which is the
+    // exact shape the old `[s.cwd].join(' ')` turned into "[object Object]".
+    const errors: string[] = [];
+    page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+    page.on("pageerror", (e) => errors.push(String(e)));
+    await page.goto(`${baseURL}/mobile/`, { waitUntil: "domcontentloaded" });
+    const rows = page.locator("#list .row");
+    await expect.poll(() => rows.count(), { timeout: 15_000 }).toBeGreaterThan(0);
+
+    // 1. NESTED: the DOM says who the child belongs to, at what depth.
+    const child = page.locator('#list .row[data-subagent-of="01a0f17d-1ff6-7077-8007-37f508f3f1e4"]');
+    await expect(child).toHaveCount(1);
+    await expect(child).toHaveAttribute("data-subagent-depth", "1");
+    const grand = page.locator('#list .row[data-subagent-of="01a0f17d-1ff6-7077-8007-37f508f3f1e4-child1"]');
+    await expect(grand).toHaveCount(1);
+    await expect(grand).toHaveAttribute("data-subagent-depth", "2");
+
+    // 2. ORDER: a child sits after its own lead even though the fixture lists
+    //    the grandchild BEFORE its parent. Order comes from the parent links.
+    const order = await rows.evaluateAll((els) =>
+      els.map((e) => (e as HTMLElement).dataset.sessionId || ""));
+    const iLead = order.indexOf("01a0f17d-1ff6-7077-8007-37f508f3f1e4");
+    const iChild = order.indexOf("01a0f17d-1ff6-7077-8007-37f508f3f1e4-child1");
+    const iGrand = order.indexOf("01a0f17d-1ff6-7077-8007-37f508f3f1e4-child2");
+    expect(iLead, "the lead row is missing").toBeGreaterThanOrEqual(0);
+    expect(iChild, "the child row is missing").toBeGreaterThan(iLead);
+    expect(iGrand, "the grandchild row is missing or not under its parent").toBeGreaterThan(iChild);
+
+    // 3. READABLE: real names on the child rows, and the object-shaped fields
+    //    are rendered as their keys, never as a raw JavaScript object.
+    const childText = await child.innerText();
+    expect(childText).toContain("links-login-facts");
+    expect(childText).toContain("/projects/dash-mobile-render-20260930");
+    const grandText = await grand.innerText();
+    expect(grandText).not.toContain("[object Object]");
+    expect(grandText, "an object field rendered as nothing at all").toMatch(/\w/);
+    // The whole list, not just the child: the ban is applied to every row.
+    const all = await rows.allInnerTexts();
+    const banned = all.filter((t) => /\[object |\bundefined\b|\bNaN\b/.test(t));
+    expect(banned, `rows with a raw value: ${banned.join(" || ")}`).toEqual([]);
+    expect(errors, `console/page errors: ${errors.join(" | ")}`).toEqual([]);
+  });
+
   for (const id of streamIds) {
     test(`session ${shortId(id)}: every recorded event renders readably`, async ({ page }) => {
       const errors = await openSession(page, id);

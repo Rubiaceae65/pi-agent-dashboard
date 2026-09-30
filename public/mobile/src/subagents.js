@@ -114,6 +114,7 @@ export function buildRow(s, depth, onOpen) {
   const bits = [label(s.cwd, ''), label(s.status, ''), label(s.model, '')].filter(Boolean).join(' \u00b7 ');
   const m = el('span', 'm', bits || label(s.id, ''));
   if (depth > 0 && s.rlmDepth) m.textContent = `sub-agent \u00b7 depth ${fmt(s.rlmDepth)} \u00b7 ` + m.textContent;
+  b.appendChild(m);
   if (typeof s.tokensIn === 'number' || typeof s.contextTokens === 'number') {
     b.appendChild(el('span', 'k', `ctx ${fmt(s.contextTokens)} \u00b7 in ${fmt(s.tokensIn)}`));
   }

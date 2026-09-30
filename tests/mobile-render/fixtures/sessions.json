@@ -148,6 +148,178 @@
    "unread": true
   },
   {
+   "tokensIn": null,
+   "tokensOut": 9369,
+   "cacheRead": 1257413,
+   "cacheWrite": 0,
+   "cost": 0,
+   "contextTokens": null,
+   "contextWindow": 262144,
+   "id": "01a0f17d-1ff6-7077-8007-37f508f3f1e4-child2",
+   "cwd": {
+    "not": "a string"
+   },
+   "name": {
+    "weird": "shape"
+   },
+   "source": "tmux",
+   "status": "completed",
+   "model": {
+    "nor": "this"
+   },
+   "thinkingLevel": "medium",
+   "startedAt": 1790757904711,
+   "sessionFile": "/home/agent/.prime/agent/sessions/01a0f17d-1ff6-7077-8007-37f508f3f1e4.jsonl",
+   "sessionDir": "/home/agent/.prime/agent/sessions",
+   "hidden": false,
+   "dataUnavailable": false,
+   "pid": 4166030,
+   "pendingQueues": {
+    "steering": [],
+    "followUp": []
+   },
+   "lastEntryCount": 4,
+   "isGitRepo": false,
+   "piVersion": "0.86.1",
+   "uiModules": [],
+   "currentTool": null,
+   "lastActivityAt": 1790758131797,
+   "lastRunStartedAt": 1790758082153,
+   "processes": [
+    {
+     "pid": 4177054,
+     "pgid": 4177051,
+     "command": "incus exec host:dash-mobile-render-20260930-worker -- su - agent -c mkdir -p /projects/dash-mobile-render-20260930/tools/render && cd /projects/dash-mobile-render-20260930/tools/render && npm init -y >/dev/null 2>&1 && npm i playwright@1.49.1 2>&1 | tail -3 && npx playwright install --with-deps chromium 2>&1 | tail -8",
+     "elapsedMs": 8000,
+     "kind": "task",
+     "label": "incus exec host:dash-mobile-render-20260930-worker -- su - agent -c mkdir -p /projects/dash-mobile-render-20260930/tools/render && cd /projects/dash-mobile-render-20260930/tools/render && npm init -y >/dev/null 2>&1 && npm i playwright@1.49.1 2>&1 | tail -3 && npx playwright install --with-deps chromium 2>&1 | tail -8"
+    }
+   ],
+   "processMetrics": {
+    "rss": 347082752,
+    "heapUsed": 75216039,
+    "heapTotal": 93810688,
+    "cpuPercent": 5.5,
+    "eventLoopMaxMs": 284,
+    "loadAvg1m": 12.35,
+    "heapSizeLimit": 4571668480,
+    "external": 28606338,
+    "arrayBuffers": 2341505,
+    "gcCount": 0,
+    "gcMajorCount": 0,
+    "gcPauseMsTotal": 0,
+    "droppedBufferedFrames": 0,
+    "refusedInboundFrames": 0,
+    "tickForwarded": 0,
+    "tickCoalesced": 0,
+    "tickDiscardedAtTerminal": 0,
+    "tickDroppedNotReady": 0,
+    "fanoutAdmitted": 0,
+    "fanoutRefused": 0,
+    "fanoutSaturationRefused": 0,
+    "updatedAt": 1790758129733
+   },
+   "nameSource": "user",
+   "autoNamerState": {
+    "hardStopped": true,
+    "errorEmitted": false,
+    "attemptsUsed": 0,
+    "starvedCount": 0,
+    "waitingCount": 0,
+    "sawStarved": false,
+    "nameSource": "user",
+    "hasAutoName": false
+   },
+   "unread": true,
+   "parentSessionId": "01a0f17d-1ff6-7077-8007-37f508f3f1e4-child1",
+   "rlmDepth": 2,
+   "title": {
+    "alsoWeird": true
+   }
+  },
+  {
+   "tokensIn": 1200,
+   "tokensOut": 9369,
+   "cacheRead": 1257413,
+   "cacheWrite": 0,
+   "cost": 0,
+   "contextTokens": 900,
+   "contextWindow": 262144,
+   "id": "01a0f17d-1ff6-7077-8007-37f508f3f1e4-child1",
+   "cwd": "/projects/dash-mobile-render-20260930",
+   "name": "links-login-facts",
+   "source": "tmux",
+   "status": "completed",
+   "model": "local-qwen/qwen3.8-27b",
+   "thinkingLevel": "medium",
+   "startedAt": 1790757904711,
+   "sessionFile": "/home/agent/.prime/agent/sessions/01a0f17d-1ff6-7077-8007-37f508f3f1e4.jsonl",
+   "sessionDir": "/home/agent/.prime/agent/sessions",
+   "hidden": false,
+   "dataUnavailable": false,
+   "pid": 4166030,
+   "pendingQueues": {
+    "steering": [],
+    "followUp": []
+   },
+   "lastEntryCount": 4,
+   "isGitRepo": false,
+   "piVersion": "0.86.1",
+   "uiModules": [],
+   "currentTool": null,
+   "lastActivityAt": 1790758131797,
+   "lastRunStartedAt": 1790758082153,
+   "processes": [
+    {
+     "pid": 4177054,
+     "pgid": 4177051,
+     "command": "incus exec host:dash-mobile-render-20260930-worker -- su - agent -c mkdir -p /projects/dash-mobile-render-20260930/tools/render && cd /projects/dash-mobile-render-20260930/tools/render && npm init -y >/dev/null 2>&1 && npm i playwright@1.49.1 2>&1 | tail -3 && npx playwright install --with-deps chromium 2>&1 | tail -8",
+     "elapsedMs": 8000,
+     "kind": "task",
+     "label": "incus exec host:dash-mobile-render-20260930-worker -- su - agent -c mkdir -p /projects/dash-mobile-render-20260930/tools/render && cd /projects/dash-mobile-render-20260930/tools/render && npm init -y >/dev/null 2>&1 && npm i playwright@1.49.1 2>&1 | tail -3 && npx playwright install --with-deps chromium 2>&1 | tail -8"
+    }
+   ],
+   "processMetrics": {
+    "rss": 347082752,
+    "heapUsed": 75216039,
+    "heapTotal": 93810688,
+    "cpuPercent": 5.5,
+    "eventLoopMaxMs": 284,
+    "loadAvg1m": 12.35,
+    "heapSizeLimit": 4571668480,
+    "external": 28606338,
+    "arrayBuffers": 2341505,
+    "gcCount": 0,
+    "gcMajorCount": 0,
+    "gcPauseMsTotal": 0,
+    "droppedBufferedFrames": 0,
+    "refusedInboundFrames": 0,
+    "tickForwarded": 0,
+    "tickCoalesced": 0,
+    "tickDiscardedAtTerminal": 0,
+    "tickDroppedNotReady": 0,
+    "fanoutAdmitted": 0,
+    "fanoutRefused": 0,
+    "fanoutSaturationRefused": 0,
+    "updatedAt": 1790758129733
+   },
+   "nameSource": "user",
+   "autoNamerState": {
+    "hardStopped": true,
+    "errorEmitted": false,
+    "attemptsUsed": 0,
+    "starvedCount": 0,
+    "waitingCount": 0,
+    "sawStarved": false,
+    "nameSource": "user",
+    "hasAutoName": false
+   },
+   "unread": true,
+   "parentSessionId": "01a0f17d-1ff6-7077-8007-37f508f3f1e4",
+   "rlmDepth": 1,
+   "title": "links-login-facts"
+  },
+  {
    "tokensIn": 95629,
    "tokensOut": 33167,
    "cacheRead": 3288972,
