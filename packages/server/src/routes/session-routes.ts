@@ -20,6 +20,8 @@ import { findSessionCustomEntry, findSessionToolCallPayload, loadSessionEntries 
 import type { SessionLoadWorkerPool } from "../session/session-load-worker-pool.js";
 import { originOf } from "../session/session-origin.js";
 import { scanAllSessions } from "../session/session-scanner.js";
+import { directChildCounts, scanRlmSubagents } from "../session/rlm-subagent-scanner.js";
+import { resolveRlmArtifactsDir } from "@blackbelt-technology/pi-dashboard-shared/dashboard-paths.js";
 import type { NetworkGuard } from "./route-deps.js";
 
 export function registerSessionRoutes(
@@ -89,6 +91,35 @@ export function registerSessionRoutes(
       if (s.id) byId.set(s.id, s);
       else orphans.push(s);
     }
+
+    // prime-agent rlm CHILDREN. A child is an in-process sub-session of its
+    // parent's worker: it registers no bridge, so it is in neither `listAll()`
+    // nor `scanAllSessions()` (whose dir is a SIBLING of the artifacts tree its
+    // transcript lives in). It is discovered from disk instead, and carries
+    // `parentSessionId` so the client can nest it under its lead.
+    //
+    // Merge precedence is unchanged — a live/scanned row wins on id collision,
+    // so a child that ever DOES get a richer row elsewhere is not downgraded to
+    // the disk projection. `childCount` is stamped onto the parent afterwards,
+    // because it is a property of the relationship rather than of either row.
+    // See change: surface-rlm-subagent-children.
+    const artifactsDir = resolveRlmArtifactsDir();
+    if (artifactsDir) {
+      const { sessions: children } = scanRlmSubagents({ artifactsDir });
+      for (const child of children) {
+        if (!byId.has(child.id)) byId.set(child.id, child);
+      }
+      for (const [parentId, count] of directChildCounts(children)) {
+        const parent = byId.get(parentId);
+        // Only stamp a parent that is actually in this response. A parent the
+        // dashboard does not otherwise know about (its own transcript archived,
+        // or on another host) gets no phantom row. Note the parent may itself
+        // be a child — a child with its own children needs the badge too, which
+        // is why this is not restricted to top-level rows.
+        if (parent) parent.childCount = count;
+      }
+    }
+
     const sessions = [...byId.values(), ...orphans].sort(
       (a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0),
     );

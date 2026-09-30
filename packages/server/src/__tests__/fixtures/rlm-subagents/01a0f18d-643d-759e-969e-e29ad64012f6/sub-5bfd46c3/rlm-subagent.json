@@ -1,0 +1,16 @@
+{
+ "type": "rlm_subagent",
+ "childId": "sub-5bfd46c3",
+ "sessionName": "research-prior-art",
+ "sessionDir": "sub-5bfd46c3",
+ "sessionFile": "01a0f18f-7d8d-760c-881d-efcb0b8db6f1.jsonl",
+ "rlmMaxDepth": 2,
+ "rlmParentNodeId": "sub-5bfd46c3",
+ "status": "running",
+ "createdAt": 1790759107985,
+ "updatedAt": "2026-09-30T09:05:08.250Z",
+ "model": {
+  "provider": "openrouter-mimo",
+  "modelId": "stealth/space-bunny-alpha"
+ }
+}
