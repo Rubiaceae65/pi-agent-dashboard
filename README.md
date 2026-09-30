@@ -33,6 +33,22 @@
 
 ---
 
+### Phone client (`/mobile/`)
+
+<table>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/mobile-render-20260930/before-session.png" alt="Phone session view before the rendering fix — [object Object] and a raw UUID header" /><br/><sub><b>Before</b> — <code>[object Object]</code>, raw UUID header</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/mobile-render-20260930/after-session.png" alt="Phone session view after the rendering fix — session name, labelled tool calls, usage line" /><br/><sub><b>After</b> — named session, labelled tool calls, usage line</sub></td>
+</tr>
+</table>
+
+`/mobile/` is a same-origin static client under `public/mobile/`; it adds no
+route and no server behaviour. It renders every recorded payload shape
+readably, and `pnpm test:mobile-render` proves it against fixtures recorded off
+a live dashboard. See [docs/mobile-client-rendering.md](docs/mobile-client-rendering.md).
+
+---
+
 ## Table of contents
 
 - [Quickstart](#quickstart)
