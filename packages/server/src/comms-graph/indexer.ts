@@ -198,6 +198,8 @@ export class CommsGraphIndexer {
   private readonly idToKey = new Map<string, string>();
   /** Bounded: the same LRU bound as nodes, without the re-key dance. */
   private readonly idToKeyOrder: string[] = [];
+  /** sessionId -> { mtimeMs, contextPct, status, live, model, endedAt }. Bounded. */
+  private readonly metaCache = new Map<string, { mtimeMs: number; pct: number | null; status: string | null; live: boolean; model: string | null; endedAt: string | null }>();
   private seq = 0;
   private truncated = false;
   private lastScanAtMs = 0;
@@ -264,6 +266,10 @@ export class CommsGraphIndexer {
       }
       budget = await this.tail(file, budget);
     }
+    // AFTER the tail: the meta file describes sessions that only exist as nodes
+    // once their transcript header has been read, and a first tick has to read
+    // the header before there is anything for the meta to describe.
+    await this.readMeta();
     this.applyRelayEdges();
     this.counters.lastScanMs = Math.max(0, this.opts.now() - started);
     this.counters.lastScanAt = new Date(started).toISOString();
@@ -320,6 +326,77 @@ export class CommsGraphIndexer {
     await this.walk(path.join(this.opts.primeDir, "sessions"), 0, false);
     await this.walk(path.join(this.opts.primeDir, "session-artifacts"), 0, false);
     await this.walk(path.join(this.opts.primeDir, "rlm-ledger"), 0, true);
+  }
+
+  /**
+   * `<sid>.meta.json` is the ONLY place the daemon writes "how full is this
+   * session's context" and whether it is live. It is a small file next to the
+   * transcript, rewritten as the session runs, so it is read by mtime and
+   * cached. The cache is bounded like everything else here: a corpus with more
+   * sessions than the cap stops learning about the oldest, which is the correct
+   * order to stop in.
+   */
+  private async readMeta(): Promise<void> {
+    const dir = path.join(this.opts.primeDir, "sessions");
+    let names: string[];
+    try {
+      names = await fsp.readdir(dir);
+    } catch {
+      return;
+    }
+    let considered = 0;
+    for (const name of names) {
+      if (considered++ > this.opts.maxFiles) break;
+      if (!name.endsWith(".meta.json")) continue;
+      const sid = name.slice(0, -".meta.json".length);
+      const full = path.join(dir, name);
+      let st: fs.Stats;
+      try {
+        st = await fsp.stat(full);
+      } catch {
+        continue;
+      }
+      const cached = this.metaCache.get(sid);
+      if (cached && cached.mtimeMs === st.mtimeMs) continue;
+      let m: Record<string, unknown>;
+      try {
+        m = JSON.parse(await fsp.readFile(full, "utf8")) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const ctx = typeof m.contextTokens === "number" ? m.contextTokens : null;
+      const win = typeof m.contextWindow === "number" && m.contextWindow > 0 ? m.contextWindow : null;
+      const entry = {
+        mtimeMs: st.mtimeMs,
+        pct: ctx !== null && win !== null ? Math.min(100, Math.round((ctx / win) * 100)) : null,
+        status: typeof m.status === "string" ? m.status : null,
+        live: m.live === true,
+        model: typeof m.model === "string" ? m.model : null,
+        endedAt: typeof m.endedAt === "number" ? new Date(m.endedAt).toISOString() : null,
+      };
+      this.metaCache.set(sid, entry);
+      while (this.metaCache.size > this.opts.maxNodes) {
+        const oldest = this.metaCache.keys().next();
+        if (oldest.done) break;
+        this.metaCache.delete(oldest.value);
+      }
+      const node = this.idToKey.get(sid) ? this.nodes.get(this.idToKey.get(sid) as string) : undefined;
+      if (!node) continue;
+      node.contextPct = entry.pct;
+      if (!node.model && entry.model) node.model = entry.model;
+      // The daemon's own status, mapped to what a person watching the graph
+      // needs to see. A session the daemon still calls "streaming" while no
+      // worker holds it (`live: false`) is a STALLED session — that is the
+      // MiniMax-plan-limit failure this whole workshop hit twice today, and
+      // drawing it as working would be the one wrong the graph exists to stop.
+      if (entry.status) {
+        if (!entry.live && (entry.status === "streaming" || entry.status === "active")) {
+          node.state = "stalled";
+        } else if (!node.state) {
+          node.state = entry.status;
+        }
+      }
+    }
   }
 
   private async walk(dir: string, depth: number, isLedger: boolean): Promise<void> {

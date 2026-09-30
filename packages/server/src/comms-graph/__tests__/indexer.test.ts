@@ -173,6 +173,27 @@ describe("the graph it produces", () => {
     expect(b2a).toMatchObject({ kind: "message", count: 1 });
   });
 
+  it("takes the context %, the model and the live flag from <sid>.meta.json", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [
+      header(LEAD_A),
+      JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }),
+    ]);
+    fs.writeFileSync(
+      path.join(dir, "sessions", `${LEAD_A}.meta.json`),
+      JSON.stringify({ model: "minimax-plan/MiniMax-M3.1", contextTokens: 65_000, contextWindow: 262_144, status: "streaming", live: false }),
+    );
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const node = ix.snapshot().nodes[0];
+    expect(node.model).toBe("minimax-plan/MiniMax-M3.1");
+    expect(node.contextPct).toBe(25);
+    // live:false while the daemon still calls it streaming is a stalled worker,
+    // and the graph must not keep drawing it as working
+    expect(node.state).toBe("stalled");
+    void p;
+  });
+
   it("scrubs a credential out of the first line on the way IN, not on the way out", async () => {
     const dir = fixtureDir();
     writeSession(dir, LEAD_A, [

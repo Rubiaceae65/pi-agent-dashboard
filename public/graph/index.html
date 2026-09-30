@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>pi comms graph</title>
+<link rel="stylesheet" href="./src/app.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="bar">
+      <h1>comms graph</h1>
+      <div class="controls">
+        <label>window
+          <select id="window"></select>
+        </label>
+        <label>lead
+          <select id="subtree"><option value="">all</option></select>
+        </label>
+        <label class="check"><input type="checkbox" id="hideFinished" checked /> hide finished</label>
+        <label class="check"><input type="checkbox" id="collapse" checked /> cluster children</label>
+        <button id="refresh" type="button">reload</button>
+      </div>
+      <span class="spacer"></span>
+      <span id="status" class="status" aria-live="polite">connecting…</span>
+    </header>
+    <main>
+      <canvas id="canvas" aria-label="graph of agent sessions and the messages between them"></canvas>
+      <aside id="panel" class="panel" aria-live="polite">
+        <p class="hint">Click a node for its state and recent messages. Click an edge for the messages on it.</p>
+      </aside>
+    </main>
+    <footer id="foot" class="foot"></footer>
+  </div>
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>

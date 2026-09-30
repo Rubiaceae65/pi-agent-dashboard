@@ -21,8 +21,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isGuardJurisdiction } from "../../auth/localhost-guard.js";
-import { COMMS_GRAPH_ROUTE, indexerCount, indexerFor, primeAgentDir } from "../route.js";
 import { createServer, type DashboardServer } from "../../server.js";
+import { COMMS_GRAPH_ROUTE, indexerCount, indexerFor, primeAgentDir } from "../route.js";
 
 let server: DashboardServer;
 let base = "";
