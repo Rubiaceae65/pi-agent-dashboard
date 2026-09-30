@@ -18,6 +18,8 @@
  * have already rendered, so a flaky phone link resumes instead of restarting the stream.
  */
 
+import { buildRow, flattenWithChildren } from './subagents.js';
+
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -137,13 +139,10 @@ function renderList() {
     box.appendChild(el('p', 'empty', 'No sessions yet. Spawn one from the desktop dashboard.'));
     return;
   }
-  for (const s of state.sessions) {
-    const b = el('button', 'row');
-    b.appendChild(el('span', 't', s.title || s.name || s.id));
-    const bits = [s.cwd, s.status].filter(Boolean).join(' · ');
-    b.appendChild(el('span', 'm', bits || s.id));
-    b.onclick = () => open(s.id, s.title || s.id);
-    box.appendChild(b);
+  // rlm sub-agent children are drawn nested under their lead, not as peers
+  // beside it. See src/subagents.js (change: surface-rlm-subagent-children).
+  for (const { session: s, depth } of flattenWithChildren(state.sessions)) {
+    box.appendChild(buildRow(s, depth, open));
   }
 }
 

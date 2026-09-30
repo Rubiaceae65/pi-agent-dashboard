@@ -43,6 +43,22 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   border-bottom: 1px solid var(--line);
 }
 .row:active { background: var(--panel-2); }
+/* rlm sub-agent rows: indented one step per depth under their lead, with a
+   left rule that repeats the tree the data already describes. Classes .d1..d4
+   are emitted by src/subagents.js; depth beyond 4 keeps the deepest indent
+   rather than overflowing a 320px phone. */
+.row.subagent { padding-left: 28px; position: relative; }
+.row.subagent::before {
+  content: ''; position: absolute; left: 14px; top: 0; bottom: 0;
+  border-left: 1px solid var(--line);
+}
+.row.subagent .t { font-weight: 500; font-size: 14px; }
+.row.d2 { padding-left: 42px; }
+.row.d2::before { left: 28px; }
+.row.d3 { padding-left: 56px; }
+.row.d3::before { left: 42px; }
+.row.d4 { padding-left: 70px; }
+.row.d4::before { left: 56px; }
 .row .t { font-weight: 600; }
 .row .m { font-size: 12px; color: var(--muted); }
 .empty { color: var(--muted); padding: 20px 14px; }
