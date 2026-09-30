@@ -163,6 +163,15 @@ import { ResyncRequesterRegistry, resyncRequestIdOf } from "./subagent-resync-ro
  */
 const CRITICAL_FRAMES_PER_DELIVERY = 4;
 
+/**
+ * How many distinct sessions the per-session drop counters remember
+ * (audit §5.8): a permanent `Map<string, number>` keyed by session id is
+ * unbounded in a long-lived process. 500 entries is ~60 KiB at the measured
+ * 100-150 B/entry, which is far above the ~122 distinct sessions a busy day
+ * produces, so the diagnostic loses nothing in practice.
+ */
+const MAX_DROP_COUNTER_SESSIONS = 500;
+
 /** Slack added to MAX_WS_BUFFER to form the absolute critical-frame ceiling. */
 const CRITICAL_FRAME_SLACK_BYTES = 1 * 1024 * 1024; // 1 MB
 
@@ -976,6 +985,25 @@ export function createBrowserGateway(
   const droppedFramesBySession = new Map<string, number>();
   let droppedBlockingTotal = 0;
   const droppedBlockingBySession = new Map<string, number>();
+  // These two tables are keyed by session id and would otherwise grow for the
+  // lifetime of the process (audit §5.8): every session that ever dropped a
+  // frame leaves an entry behind, and nothing ever deletes it. The COUNT is
+  // what matters for diagnosis, and it is already carried by the `_total`
+  // scalars; the per-session breakdown is a recency aid for the most recent
+  // MAX_DROP_COUNTER_SESSIONS sessions. Map preserves insertion order, so the
+  // oldest key is the first one iteration yields.
+  const rememberDrop = (table: Map<string, number>, sessionId: string): void => {
+    if (table.has(sessionId)) {
+      table.set(sessionId, (table.get(sessionId) ?? 0) + 1);
+      return;
+    }
+    table.set(sessionId, 1);
+    while (table.size > MAX_DROP_COUNTER_SESSIONS) {
+      const oldest = table.keys().next();
+      if (oldest.done) break;
+      table.delete(oldest.value);
+    }
+  };
   const DROP_WARN_WINDOW_MS = 5_000;
   let lastDropWarnAt = 0;
 
@@ -987,10 +1015,10 @@ export function createBrowserGateway(
   ) {
     if (frameClass === "blocking") {
       droppedBlockingTotal++;
-      if (sessionId) droppedBlockingBySession.set(sessionId, (droppedBlockingBySession.get(sessionId) ?? 0) + 1);
+      if (sessionId) rememberDrop(droppedBlockingBySession, sessionId);
     } else {
       droppedFramesTotal++;
-      if (sessionId) droppedFramesBySession.set(sessionId, (droppedFramesBySession.get(sessionId) ?? 0) + 1);
+      if (sessionId) rememberDrop(droppedFramesBySession, sessionId);
     }
     const now = Date.now();
     if (now - lastDropWarnAt >= DROP_WARN_WINDOW_MS) {

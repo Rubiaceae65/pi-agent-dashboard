@@ -34,6 +34,14 @@ export interface ChurnSample {
   browserSockets: number;
   /** Cumulative transcript frames shed under back-pressure. */
   droppedFrames: number;
+  /**
+   * Distinct session ids remembered in the gateway's per-session drop
+   * counters (`droppedFramesBySession` / `droppedBlockingBySession`).
+   * These maps are keyed by session id and were only ever added to
+   * (audit §5.8), so this is the size of a table that used to track the
+   * number of sessions the process had EVER seen.
+   */
+  dropCounterSessions: number;
 }
 
 export interface ChurnResult {
@@ -223,6 +231,10 @@ export async function runChurn(
       browserBufferedBytes: buffered,
       browserSockets: gw.wss.clients.size,
       droppedFrames: gw.getDroppedFrameStats().total,
+      dropCounterSessions: new Set([
+        ...Object.keys(gw.getDroppedFrameStats().bySession),
+        ...Object.keys(gw.getDroppedFrameStats().blocking.bySession),
+      ]).size,
     };
     onSample?.(s);
     return s;
@@ -330,11 +342,12 @@ export function formatResults(label: string, r: ChurnResult): string {
       String(s.gatewayRoutes),
       (s.browserBufferedBytes / MB).toFixed(2),
       String(s.droppedFrames),
+      String(s.dropCounterSessions),
     ].join(","),
   );
   return [
     `# ${label}`,
-    "t_sec,rss_MiB,heapUsed_MiB,sessionRows,endedRows,gatewayRoutes,browserBuffered_MiB,droppedFrames",
+    "t_sec,rss_MiB,heapUsed_MiB,sessionRows,endedRows,gatewayRoutes,browserBuffered_MiB,droppedFrames,dropCounterSessions",
     ...rows,
     `# registered=${r.registered} unregistered=${r.unregistered} sessionRowDelta=${r.sessionRowDelta} gatewayRouteDelta=${r.gatewayRouteDelta} peakSingleSocketBuffered=${(r.peakSingleSocketBufferedBytes / MB).toFixed(2)}MiB peakTotalBuffered=${(r.peakTotalBufferedBytes / MB).toFixed(2)}MiB over ${r.socketsAtPeak} sockets budgetTerminations=${r.budgetTerminations} finalBrowserBuffered=${(r.finalBrowserBufferedBytes / MB).toFixed(2)}MiB`,
     "",

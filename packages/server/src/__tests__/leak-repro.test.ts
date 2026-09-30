@@ -85,6 +85,20 @@ async function churn(overrides: Parameters<typeof runChurn>[1] = {}): Promise<Ch
  */
 const MAX_RESIDENT_ENDED = 240;
 
+/**
+ * How many distinct sessions the gateway's per-session drop counters remember.
+ *
+ * Stated here, as a test constant, for the same reason as the tier above: a
+ * test must not import the cap it asserts against.
+ *
+ * Derivation: the counters exist to attribute a stuck tool-card incident, and
+ * a post-mortem only ever looks at the sessions involved in it — which are the
+ * recent ones. The estate produces on the order of 120-180 distinct sessions a
+ * day (audit §5.3), so 500 entries is several days of full fidelity while
+ * keeping the table bounded at ~60 KiB (measured 100-150 B per entry).
+ */
+const MAX_DROP_COUNTER_SESSIONS = 500;
+
 describe("REPRODUCE: dashboard memory under synthetic churn", () => {
   beforeAll(boot, 120_000);
   afterAll(shutdown);
@@ -182,6 +196,33 @@ describe("bounded under churn (regression — red before the fix)", () => {
     // routing entry behind. Pre-fix the table is write-mostly.
     expect(result.gatewayRouteDelta).toBeLessThanOrEqual(0);
   }, 120_000);
+
+  it("does not accumulate an unbounded per-session drop-counter table", async () => {
+    // The audit's §5.8 read: `droppedFramesBySession` and
+    // `droppedBlockingBySession` are `Map<string, number>` keyed by session id,
+    // incremented on every shed frame, with no `.delete()` and no `.clear()`
+    // anywhere in the file. Each session that ever dropped a frame left an
+    // entry for the lifetime of the process.
+    //
+    // Small in absolute terms (~15 KiB for a day's sessions) but the SHAPE is
+    // the same one this file exists to catch: a map keyed by session that is
+    // only ever added to. A churn that drops frames under many distinct
+    // session ids must leave the counter bounded.
+    const result = await churn({
+      ticks: 40,
+      perTick: 25,
+      concurrentSessions: 6,
+      tickMs: 2,
+      bytesPerTick: 128 * 1024,
+      slowClients: 4,
+      healthyClients: 0,
+    });
+    // The counter must have been exercised, or the bound is vacuous: a run
+    // that never shed a frame never wrote a key.
+    const last = result.samples[result.samples.length - 1]!;
+    expect(last.droppedFrames).toBeGreaterThan(0);
+    expect(last.dropCounterSessions).toBeLessThanOrEqual(MAX_DROP_COUNTER_SESSIONS);
+  }, 180_000);
 
   it("does not accumulate an unbounded ended-session tombstone tier", async () => {
     // Churn ENOUGH to cross the retention tier. A tombstone cap cannot be
