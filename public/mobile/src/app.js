@@ -18,7 +18,8 @@
  * have already rendered, so a flaky phone link resumes instead of restarting the stream.
  */
 
-import { buildRow, flattenWithChildren } from './subagents.js';
+<import { buildRow, flattenWithChildren } from './subagents.js';
+import { describeEvent, fmt, label, sessionName } from './format.js';
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
@@ -105,7 +106,11 @@ function handle(m) {
       renderList();
       break;
     case 'sessions_list':
-      if (m.sessions) { state.sessions = m.sessions; renderList(); }
+      // NOT a session list. `sessions_list` carries PiSessionInfo[] for ONE cwd
+      // (types.ts), and the PoC replaced the entire list with it — so one
+      // folder's worth of files wiped every other session off the phone. The
+      // desktop client ignores the message outright (useMessageHandler.ts);
+      // so do we, and let the 15s poll bring the real list back.
       break;
     case 'event_replay':
       for (const { seq, event } of m.events || []) pushEvent(m.sessionId, seq, event);
@@ -127,6 +132,21 @@ function pushEvent(sid, seq, event) {
   if (seq <= seen) return; // already drawn — the replay and the live stream overlap
   state.lastSeq.set(sid, seq);
   const arr = state.events.get(sid) || [];
+  // `message_update` is a CUMULATIVE SNAPSHOT of the assistant message, not a
+  // delta: 1635 of 2076 recorded events were message_update, and each carries
+  // the whole message so far. Appending them all drew one sentence as dozens
+  // of stacked, near-identical rows. Keep the newest snapshot per turn and let
+  // render time decide — same rule as the reference reducer's
+  // streamingTextFlushed. Everything else is appended as it arrives.
+  const t = event && (event.eventType || event.data?.type);
+  if (t === 'message_update') {
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const prev = arr[i].event;
+      const pt = prev && (prev.eventType || prev.data?.type);
+      if (pt !== 'message_update') break;
+      arr.splice(i, 1);
+    }
+  }
   arr.push({ seq, event });
   state.events.set(sid, arr);
 }
@@ -139,10 +159,16 @@ function renderList() {
     box.appendChild(el('p', 'empty', 'No sessions yet. Spawn one from the desktop dashboard.'));
     return;
   }
-  // rlm sub-agent children are drawn nested under their lead, not as peers
+<  // rlm sub-agent children are drawn nested under their lead, not as peers
   // beside it. See src/subagents.js (change: surface-rlm-subagent-children).
+  //
+  // The row body is built by buildRow() rather than inline, which is what
+  // moved the never-draw-a-raw-object guarantee out of THIS file: buildRow()
+  // now routes every field through format.js. Both changes are kept, and the
+  // rebase is what forced that boundary to move.
   for (const { session: s, depth } of flattenWithChildren(state.sessions)) {
     box.appendChild(buildRow(s, depth, open));
+
   }
 }
 
@@ -150,7 +176,7 @@ function open(sid, title) {
   state.sid = sid;
   state.view = 'detail';
   document.body.dataset.view = 'detail';
-  $('#dtitle').textContent = title;
+  $('#dtitle').textContent = label(title, sid);
   // first open: replay from 0. later re-opens keep whatever is in the buffer.
   if (!state.lastSeq.get(sid)) send({ type: 'subscribe', sessionId: sid, lastSeq: 0 });
   else send({ type: 'subscribe', sessionId: sid, lastSeq: state.lastSeq.get(sid) });
@@ -165,25 +191,18 @@ function back() {
   renderList();
 }
 
-function textOf(ev) {
-  const d = ev.data || {};
-  if (typeof d.text === 'string') return d.text;
-  if (d.type === 'tool_call') return `[tool] ${d.name || ''} ${JSON.stringify(d.arguments || {}).slice(0, 200)}`;
-  if (d.type === 'tool_result') return '[result] ' + String(d.output || d.text || '').slice(0, 400);
-  if (d.message) return String(d.message);
-  if (d.status) return String(d.status);
-  return JSON.stringify(d).slice(0, 300);
-}
-
 function renderLog() {
   const box = $('#log');
   box.textContent = '';
   const arr = state.events.get(state.sid) || [];
   for (const { seq, event } of arr) {
-    const kind = event.eventType === 'input' ? 'user' : 'assistant';
-    const m = el('div', 'msg ' + kind);
-    m.appendChild(el('div', 'who', `#${seq} ${kind}`));
-    m.appendChild(el('div', 'body', textOf(event)));
+    const d = describeEvent(event);          // never returns a raw object
+    const m = el('div', 'msg ' + d.role);
+    m.appendChild(el('div', 'who', `#${seq} ${d.title}`));
+    for (const line of d.lines) {
+      if (line.text === undefined || line.text === null || line.text === '') continue;
+      m.appendChild(el('div', line.cls, line.text));
+    }
     box.appendChild(m);
   }
   box.scrollTop = box.scrollHeight;

@@ -15,6 +15,8 @@
  * See change: surface-rlm-subagent-children.
  */
 
+import { fmt, label, sessionName } from './format.js';
+
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -97,16 +99,24 @@ export function flattenWithChildren(sessions) {
  */
 export function buildRow(s, depth, onOpen) {
   const b = el('button', 'row' + (depth > 0 ? ' subagent d' + Math.min(depth, 4) : ''));
+  b.dataset.sessionId = label(s.id, '');      // stable hook for the render test
   if (depth > 0) {
     b.dataset.subagentOf = s.parentSessionId;
     b.dataset.subagentDepth = String(depth);
   }
-  const name = s.title || s.name || s.id;
+  // NEVER draw a raw field. This is the guarantee that used to live in
+  // app.js's renderList(), which no longer builds rows at all now that
+  // nesting owns it: `s.cwd` is whatever the server sent, and
+  // `[s.cwd].join(' ')` on an object is the "[object Object]" this client
+  // exists to stop drawing. label() cannot return one.
+  const name = sessionName(s);
   b.appendChild(el('span', 't', (depth > 0 ? '\u21b3 ' : '') + name));
-  const bits = [s.cwd, s.status].filter(Boolean).join(' \u00b7 ');
-  const m = el('span', 'm', bits || s.id);
-  if (depth > 0 && s.rlmDepth) m.textContent = `sub-agent \u00b7 depth ${s.rlmDepth} \u00b7 ` + m.textContent;
-  b.appendChild(m);
+  const bits = [label(s.cwd, ''), label(s.status, ''), label(s.model, '')].filter(Boolean).join(' \u00b7 ');
+  const m = el('span', 'm', bits || label(s.id, ''));
+  if (depth > 0 && s.rlmDepth) m.textContent = `sub-agent \u00b7 depth ${fmt(s.rlmDepth)} \u00b7 ` + m.textContent;
+  if (typeof s.tokensIn === 'number' || typeof s.contextTokens === 'number') {
+    b.appendChild(el('span', 'k', `ctx ${fmt(s.contextTokens)} \u00b7 in ${fmt(s.tokensIn)}`));
+  }
   b.onclick = () => onOpen(s.id, name);
   return b;
 }

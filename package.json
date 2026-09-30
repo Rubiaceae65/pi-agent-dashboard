@@ -94,6 +94,8 @@
     "site:preview": "npm --prefix site run preview",
     "screenshots": "npm --prefix site run screenshots",
     "pretest:e2e": "node -e \"process.env.PW_CHANNEL||require('child_process').execSync('playwright install chromium',{stdio:'inherit'})\"",
+    "pretest:mobile-render": "node -e \"process.env.PW_CHANNEL||require('child_process').execSync('playwright install chromium',{stdio:'inherit'})\"",
+    "test:mobile-render": "playwright test --config playwright.mobile-render.config.ts",
     "test:e2e": "playwright test",
     "pretest:e2e:ui": "node -e \"process.env.PW_CHANNEL||require('child_process').execSync('playwright install chromium',{stdio:'inherit'})\"",
     "test:e2e:ui": "playwright test --ui",
