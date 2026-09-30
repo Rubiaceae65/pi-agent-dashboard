@@ -187,3 +187,28 @@ describe("a 200 is not proof the route exists", () => {
     expect(isGraphResponse(500, "application/json")).toBe(false);
   });
 });
+
+describe("hide finished is a filter, not a checkbox", () => {
+  const g = {
+    nodes: [node("live", { state: "working", lastActivityAt: ago(1) }), node("done", { state: "ended", lastActivityAt: ago(60) }), node("dead", { gone: true })],
+    edges: [{ kind: "message" as const, from: "live", to: "done", count: 1, firstAt: ago(2), lastAt: ago(2), lines: [], gone: false }],
+  };
+  const shown = (hideFinished: boolean, focus: string | null = null) =>
+    selectGraph(g, { windowMs: 24 * 3600_000, hideFinished, focus }, NOW).nodes.map((n) => n.key);
+
+  it("drops ended and gone nodes when it is on", () => {
+    expect(shown(true)).toEqual(["live"]);
+  });
+  it("keeps the finished ones that still have edges when it is off", () => {
+    // "dead" is absent in both cases, and that is NOT the finished filter: a node
+    // with no edge in the window is not drawn at all, finished or not. The
+    // filter is about `done`, which the edge list still reaches.
+    expect(shown(false).sort()).toEqual(["done", "live"]);
+  });
+  it("keeps a finished node the reader explicitly focused", () => {
+    expect(shown(true, "done")).toContain("done");
+  });
+  it("drops the edges to what it dropped", () => {
+    expect(selectGraph(g, { windowMs: 24 * 3600_000, hideFinished: true }, NOW).edges).toEqual([]);
+  });
+});

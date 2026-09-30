@@ -115,10 +115,17 @@ export function selectGraph(graph, filters = {}, nowMs = 0) {
     if (focus && (n.key === focus || ancestors(n.key).includes(focus))) keep.add(n.key);
     else if (touched.has(n.key)) keep.add(n.key);
   }
-  const nodes = all.filter((n) => keep.has(n.key) && (subtree ? inScope(n.key) || touched.has(n.key) : true));
+  const nodes = all.filter((n) => {
+    if (!keep.has(n.key)) return false;
+    if (subtree && !(inScope(n.key) || touched.has(n.key))) return false;
+    // "hide finished" is a real filter, not a checkbox that draws a hairball
+    // anyway: a node the user explicitly focused stays even when it is
+    // finished, because they asked about THAT node.
+    if (hideFinished && n.key !== focus && isFinished(n, nowMs)) return false;
+    return true;
+  });
   const visible = new Set(nodes.map((n) => n.key));
   const finalEdges = edges.filter((e) => visible.has(e.from) && visible.has(e.to));
-  void hideFinished;
   return { nodes, edges: finalEdges };
 }
 
