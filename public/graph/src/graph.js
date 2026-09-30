@@ -15,7 +15,7 @@
  * the background is still shown when it comes back, and one that is merely
  * still present in the ring is not re-flashed every poll.
  */
-import { recency, STATES, stateOf } from "./model.js";
+import { labelSetFor, recency, STATES, stateOf } from "./model.js";
 
 const BG = "#0b0d12";
 const EDGE = "#334155";
@@ -193,15 +193,9 @@ export class GraphRenderer {
   labelSet(budget) {
     const nodes = this.nodes || [];
     const cap = budget ?? Math.max(12, Math.round(46 / Math.max(1, Math.sqrt(nodes.length / 40))));
-    const score = (n) => (n.cluster ? 1000 + n.childCount : 0) + (n.messagesIn || 0) + (n.messagesOut || 0);
-    const sorted = [...nodes].sort((a, b) => score(b) - score(a));
-    const keep = new Set();
-    for (const n of sorted) {
-      if (keep.size >= cap) break;
-      keep.add(n.key);
-    }
-    for (const k of [this.selected, this.hover]) if (k) keep.add(k);
-    return keep;
+    // The decision lives in model.js so it can be tested without a canvas; see
+    // `labelSetFor` for why the budget alone is not the whole rule.
+    return labelSetFor(nodes, this.edges || [], { cap, hovered: this.hover, selected: this.selected });
   }
 
   setGraph(nodes, edges, pos) {

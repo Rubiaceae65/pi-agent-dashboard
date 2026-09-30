@@ -16,6 +16,7 @@ import {
   ancestorKeys,
   clusterByLead,
   dataRouteCandidates,
+  labelSetFor,
   isGraphResponse,
   isFinished,
   leadList,
@@ -210,5 +211,57 @@ describe("hide finished is a filter, not a checkbox", () => {
   });
   it("drops the edges to what it dropped", () => {
     expect(selectGraph(g, { windowMs: 24 * 3600_000, hideFinished: true }, NOW).edges).toEqual([]);
+  });
+});
+
+describe("the busiest hub always gets its name", () => {
+  // The screenshot that motivated this: at 528 nodes the dominant hub - the one
+  // with ~25 children radiating from it - was UNLABELLED, because the label
+  // budget scores on messages and that node is quiet. It is the single node a
+  // reader most wants named, and the score said no.
+  const edgesFor = (hub: string, spokes: number) =>
+    Array.from({ length: spokes }, (_, i) => ({
+      kind: "message" as const,
+      from: hub,
+      to: `spoke-${i}`,
+      count: 1,
+      firstAt: ago(5),
+      lastAt: ago(5),
+      lines: [],
+      gone: false,
+    }));
+
+  it("labels a high-degree node even when it is quiet and outside the budget", () => {
+    const nodes = [node("hub"), ...Array.from({ length: 60 }, (_, i) => node(`spoke-${i}`)), ...Array.from({ length: 10 }, (_, i) => node(`chatty-${i}`, { messagesIn: 9, messagesOut: 9 }))];
+    const keep = labelSetFor(nodes, edgesFor("hub", 25), { cap: 12 });
+    expect(keep.has("hub")).toBe(true);
+    // and the budget still holds for everything else
+    expect(keep.size).toBeLessThanOrEqual(14);
+  });
+
+  it("uses degree in the DRAWN graph, not message count", () => {
+    const nodes = [node("a"), node("b")];
+    const edges = [
+      { kind: "message" as const, from: "a", to: "b", count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
+      { kind: "message" as const, from: "a", to: "b", count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
+    ];
+    const keep = labelSetFor(nodes, edges, { cap: 1 });
+    expect(keep.has("a")).toBe(true);
+  });
+
+  it("stays bounded when everything is a hub", () => {
+    const nodes = Array.from({ length: 40 }, (_, i) => node(`n-${i}`));
+    const edges = nodes.flatMap((n, i) => [
+      { kind: "message" as const, from: n.key, to: nodes[(i + 1) % 40].key, count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
+      { kind: "message" as const, from: n.key, to: nodes[(i + 2) % 40].key, count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
+    ]);
+    const keep = labelSetFor(nodes, edges, { cap: 12 });
+    expect(keep.size).toBeLessThanOrEqual(12 + 8);
+  });
+
+  it("labels everything when the graph is small enough to fit", () => {
+    const nodes = [node("a"), node("b"), node("c")];
+    const keep = labelSetFor(nodes, [], { cap: 12 });
+    expect(keep.size).toBe(3);
   });
 });

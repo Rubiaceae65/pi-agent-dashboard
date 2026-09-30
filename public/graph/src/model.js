@@ -245,3 +245,60 @@ export function isGraphResponse(status, contentType) {
   if (status !== 200) return false;
   return (contentType ?? "").toLowerCase().includes("application/json");
 }
+
+/** Hard ceiling on hub labels, so "every hub is named" cannot become a wall. */
+const MAX_HUB_LABELS = 8;
+
+/**
+ * Which nodes get a name drawn next to them.
+ *
+ * Two rules, and the second one exists because a screenshot said so. At 528
+ * nodes the single most conspicuous thing on the canvas - the hub with ~25
+ * children radiating from it - was UNLABELLED, because the budget scores on
+ * message volume and that node is quiet. It is the first thing a reader looks
+ * at, so message volume is the wrong question for it.
+ *
+ *   1. the top `cap` by "how much happened here" (what the original rationing
+ *      does, and what keeps the count bounded as the corpus grows), plus
+ *      whatever is hovered or selected; and
+ *   2. GUARANTEED: any node whose degree in the DRAWN graph is at least
+ *      `max(4, 2 x median degree)`, capped at {@link MAX_HUB_LABELS} of them,
+ *      highest degree first.
+ *
+ * Degree in the drawn graph is the honest measure of "a reader would look at
+ * this": it counts the edges actually on screen, not the traffic that produced
+ * them. It is already computed for the layout, so this costs one pass.
+ *
+ * The threshold is relative on purpose. An absolute one breaks at both ends: on
+ * a 5-node graph it would name nothing, and on a 2000-node graph it would name
+ * half the canvas.
+ */
+export function labelSetFor(nodes, edges, options = {}) {
+  const { cap = 12, hovered = null, selected = null } = options;
+  const score = (n) => (n.cluster ? 1000 + n.childCount : 0) + (n.messagesIn || 0) + (n.messagesOut || 0);
+
+  const degree = new Map();
+  for (const n of nodes) degree.set(n.key, 0);
+  for (const e of edges || []) {
+    if (degree.has(e.from)) degree.set(e.from, degree.get(e.from) + 1);
+    if (degree.has(e.to)) degree.set(e.to, degree.get(e.to) + 1);
+  }
+
+  const keep = new Set();
+  for (const n of [...nodes].sort((a, b) => score(b) - score(a))) {
+    if (keep.size >= cap) break;
+    keep.add(n.key);
+  }
+  for (const k of [hovered, selected]) if (k && degree.has(k)) keep.add(k);
+
+  const sortedDegrees = [...degree.values()].sort((a, b) => a - b);
+  const median = sortedDegrees.length ? sortedDegrees[Math.floor(sortedDegrees.length / 2)] : 0;
+  const hubFloor = Math.max(4, 2 * median);
+  const hubs = [...nodes]
+    .filter((n) => (degree.get(n.key) || 0) >= hubFloor)
+    .sort((a, b) => (degree.get(b.key) || 0) - (degree.get(a.key) || 0))
+    .slice(0, MAX_HUB_LABELS);
+  for (const n of hubs) keep.add(n.key);
+
+  return keep;
+}
