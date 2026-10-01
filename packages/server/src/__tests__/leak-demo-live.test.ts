@@ -16,7 +16,22 @@ import { join } from "node:path";
 import { createServer } from "../server.js";
 import { runChurn } from "../../leak-repro/churn.js";
 
-it("holds a live dashboard open under churn", async () => {
+// OPT-IN. This file is collected by the suite's include glob
+// (`src/**/__tests__/**/*.test.ts`), and it holds a server open ON PURPOSE so a
+// person can watch and screenshot the dashboard under churn. Left enabled it
+// is not a test at all: it never resolves, so it sat in the suite until its
+// timeout expired and turned the branch's own headline run RED.
+//
+// The earlier version also had a second bug worth naming: the per-test
+// timeout was `DEMO_MINUTES * 120_000`, i.e. TWICE the intended duration
+// (6 min -> 720 s), so "give it more time" was never going to fix it.
+//
+// It runs only when DEMO_LIVE=1, which is how the screenshots in shots/ were
+// taken. Everything that is actually an assertion lives in
+// leak-repro.test.ts, which the suite runs unconditionally.
+const demoLive = process.env.DEMO_LIVE === "1";
+
+it.skipIf(!demoLive)("holds a live dashboard open under churn", async () => {
   const home = mkdtempSync(join(tmpdir(), "leak-demo-"));
   process.env.HOME = home;
   const server = await createServer({
@@ -49,5 +64,11 @@ it("holds a live dashboard open under churn", async () => {
       `${all.filter((s) => s.status === "ended").length} ended`,
   );
   console.log("DEMO still serving; Ctrl-C to stop.");
-  await new Promise(() => {});
-}, Number(process.env.DEMO_MINUTES ?? 6) * 120_000);
+  // Hold the server open for the screenshot window, then END THE TEST
+  // SUCCESSFULLY rather than waiting out the timeout. A timeout here would be
+  // a RED run that means "the demo worked", which is exactly the kind of
+  // signal that teaches people to ignore red.
+  await new Promise((r) => setTimeout(r, Number(process.env.DEMO_HOLD_SEC ?? 60) * 1000));
+  await server.stop?.();
+  console.log("DEMO window closed cleanly.");
+}, (Number(process.env.DEMO_MINUTES ?? 6) * 60 + Number(process.env.DEMO_HOLD_SEC ?? 60) + 120) * 1000);
