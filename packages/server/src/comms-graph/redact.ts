@@ -14,6 +14,13 @@
  *   2. replace anything that LOOKS like a credential, by shape, with a marker;
  *   3. cap the length.
  *
+ * A note on coverage, because the file's own prose was once wider than its
+ * rules: the scheme rule catches `Bearer`/`Basic`/`Digest`/`Token` wherever
+ * they appear - bare, colon-separated, lower case, in prose, inside a `curl` -
+ * and NOT only after the literal word `authorization:`. Seven phrasings leaked
+ * through that gap until a verifier planted a token of their own; those seven
+ * are now tests.
+ *
  * WHAT IT DELIBERATELY DOES NOT DO: guess. There is no "looks like an
  * internal address, hide it" rule, because a graph of a workshop that hid its
  * own addresses would be a graph nobody could act on. Addresses and paths are
@@ -54,6 +61,29 @@ const PATTERNS: [string, RegExp, (m: string, ...g: string[]) => string][] = [
     /\b(authorization\s*:\s*)(?:bearer|basic|token)?\s*\S+/gi,
     (_m, head: string) => `${head}${MARK}`,
   ],
+  // A credential announced by its SCHEME, wherever the scheme appears.
+  //
+  // The rule above is anchored on the literal word `authorization:`, so it only
+  // ever caught the header form. A verifier token of their own devising
+  // (`Zqv7alphaBRAVO9912secret`, which appears nowhere in this branch) walked
+  // through in full in six other shapes - bare `Bearer <t>`, `Bearer: <t>`,
+  // lower case, trailing dot, in prose, and inside `curl -H Bearer <t>`. That is
+  // the whole point of the feature: `curl -H 'Bearer <token>'` is how a
+  // credential reaches a lead's report, and this graph renders first lines to
+  // whoever is logged in.
+  //
+  // The scheme word is KEPT (`Bearer [redacted]`), because which scheme it was is
+  // exactly what makes the line actionable.
+  //
+  // And the candidate must LOOK like a credential, or this rule eats ordinary
+  // English: `bearer tokens live in the vault` is prose. Length plus a digit, or
+  // length plus mixed case, is what separates a token from a noun.
+  [
+    "bearer-style credential",
+    /\b(bearer|basic|digest|token)(\s*[:=]\s*|\s+)([A-Za-z0-9._~+/=-]{12,})/gi,
+    (_m, scheme: string, sep: string, candidate: string) =>
+      looksLikeCredential(candidate) ? `${scheme}${sep}${MARK}` : `${scheme}${sep}${candidate}`,
+  ],
   // An explicit assignment whose NAME says it is a secret. This is the one that
   // catches the common case: "token: hunter2", "API_KEY=abc123". The name and
   // the separator survive; the value does not.
@@ -78,6 +108,22 @@ const PATTERNS: [string, RegExp, (m: string, ...g: string[]) => string][] = [
   // A long opaque blob on its own.
   ["opaque token", /\b[A-Za-z0-9_-]{48,}\b/g, () => MARK],
 ];
+
+/**
+ * Does this run of characters look like a credential rather than a word?
+ *
+ * The gap between the two rules that use it: `bearer tokens live in the vault`
+ * must survive untouched, `bearer Zqv7alphaBRAVO9912secret` must not. A digit
+ * anywhere is decisive (real tokens are full of them); failing that, mixed case
+ * at length is. Both are cheap, both are bounded, and both err towards keeping
+ * the line readable rather than towards redacting a noun.
+ */
+function looksLikeCredential(candidate: string): boolean {
+  // The caller's regex already demands {12,}, so a length guard here would be
+  // unreachable - a mutation test proved it: flipping it changed nothing.
+  if (/\d/.test(candidate)) return true;
+  return /[a-z]/.test(candidate) && /[A-Z]/.test(candidate);
+}
 
 /** Strip C0/C1 control characters and ANSI CSI sequences. */
 function stripControl(s: string): string {

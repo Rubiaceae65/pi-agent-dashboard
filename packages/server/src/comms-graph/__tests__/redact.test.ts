@@ -80,3 +80,62 @@ describe("the scrubber is safe to run twice", () => {
     expect(redact("x".repeat(400)).length).toBeLessThanOrEqual(200);
   });
 });
+
+/**
+ * The verifier's 7 bearer phrasings (`checks-11-comms-graph/VERDICT.md`).
+ *
+ * The token is THE VERIFIER'S, `Zqv7alphaBRAVO9912secret`, which appears nowhere
+ * in this branch - so this suite cannot have been written to pass on the
+ * author's own token value. The rule that failed all of these was anchored on the
+ * literal word `authorization:`, which is exactly the "a check that is only
+ * right on the data it was tested with" shape: the author's single bearer test
+ * used the `Authorization:` form, and that form is the only form it tried.
+ */
+const VTOKEN = "Zqv7alphaBRAVO9912secret";
+
+describe("bearer, wherever it appears", () => {
+  const cases: [string, string][] = [
+    ["already handled: the header form", `Authorization: Bearer ${VTOKEN}`],
+    ["bare, no colon", `Bearer ${VTOKEN}`],
+    ["with a colon", `Bearer: ${VTOKEN}`],
+    ["lower case", `bearer ${VTOKEN}`],
+    ["trailing dot", `Bearer: ${VTOKEN}.`],
+    ["in prose", `in prose: use bearer ${VTOKEN}`],
+    ["inside a curl", `curl -H Bearer ${VTOKEN} https://api.example.com/v1`],
+  ];
+
+  for (const [name, line] of cases) {
+    it(`scrubs the token in ${name}`, () => {
+      const out = redact(line);
+      expect(out).not.toContain(VTOKEN);
+      expect(out).toContain("[redacted]");
+    });
+  }
+
+  it("names the rule that fired, rather than reporting null", () => {
+    expect(whichRule(`Bearer ${VTOKEN}`)).not.toBeNull();
+    expect(whichRule(`curl -H Bearer ${VTOKEN}`)).not.toBeNull();
+  });
+
+  it("keeps the scheme word, which is not a secret", () => {
+    expect(redact(`curl -H Bearer ${VTOKEN}`)).toContain("Bearer");
+  });
+
+  it("does not eat ordinary English that happens to use the word", () => {
+    // The failure mode of a wider rule: `bearer tokens from the vault` is prose,
+    // and a naive `bearer\s+\S+` turns it into `bearer [redacted] from the
+    // vault`. The rule requires the candidate to LOOK like a credential.
+    for (const prose of [
+      "bearer tokens live in the vault, not in the transcript",
+      "the bearer of this message is the host",
+      "Basic auth is off on this endpoint",
+      "token count went up after the deploy",
+    ]) {
+      expect(redact(prose)).toBe(prose);
+    }
+  });
+
+  it("still scrubs a short prefixed token the old shapes caught", () => {
+    expect(redact("Authorization: Bearer sk-abcdefghijklmnopqrst")).not.toContain("sk-abcdefghijklmnopqrst");
+  });
+});
