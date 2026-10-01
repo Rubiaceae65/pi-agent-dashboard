@@ -22,9 +22,29 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-/** True when a row is an rlm sub-agent, by the server's own marker. */
+/**
+ * True when a row is an rlm sub-agent, by the server's own marker.
+ *
+ * TOTAL, deliberately. `/api/sessions` is assembled by more than one writer and
+ * a literal `null` element has been seen on the wire. Reading `session.id` or
+ * `.parentSessionId` off that threw a TypeError out of the very first predicate
+ * every list function calls, so ONE malformed row took down the whole phone
+ * view - not a degraded list, no list at all. A predicate that answers a
+ * question about every value it can be handed has no such failure mode.
+ */
 export function isRlmChild(session) {
-  return typeof session.parentSessionId === 'string' && session.parentSessionId.length > 0;
+  return typeof session?.parentSessionId === 'string' && session.parentSessionId.length > 0;
+}
+
+/**
+ * The rows that are real session objects.
+ *
+ * A row without an `id` cannot be keyed, nested, drawn or clicked, so it is not
+ * a degraded session - it is not a session. Filtered once, here, so every caller
+ * above gets the guarantee without repeating the check.
+ */
+export function usableRows(sessions) {
+  return (Array.isArray(sessions) ? sessions : []).filter((s) => s != null && typeof s === 'object' && typeof s.id === 'string' && s.id.length > 0);
 }
 
 /** parentId -> its direct children, in the order they were given. */
@@ -66,6 +86,9 @@ export function topLevelRows(sessions) {
  * hang the phone.
  */
 export function flattenWithChildren(sessions) {
+  // Drop malformed rows ONCE, here, so the walk below only ever sees objects it
+  // can key. Total in, total out: a payload of pure junk is an empty list.
+  sessions = usableRows(sessions);
   const index = indexChildrenByParent(sessions);
   const out = [];
   const seen = new Set();
