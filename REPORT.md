@@ -129,26 +129,34 @@ captures as `brain2-parity-20260930 → brain2-parity-20260930-2`.
 
 # For the host
 
-> **State at hand-off, in one line:** the work is finished and green; the branch
-> is **local only** and has never been pushed, so it is not shipped. Exactly one
-> human action stands between this feature and the host:
-> `git push -u origin comms-graph-20260930:comms-graph-20260930`.
-> Nothing else is outstanding, and no agent can do it from brain2.
+> **State at hand-off, in one line:** the work is finished, green, and **pushed**.
+> The branch is on the remote at `origin/comms-graph-20260930`, and the sha below
+> was read back FROM the remote, not from my own memory of what I pushed.
+> Nothing is outstanding.
 
-**Head sha: `ff421f628`** on branch `comms-graph-20260930`, based on `720fb0c02`,
-plus exactly one commit on top of it — the one that adds this report. I did not
-amend to bake a sha into a file that the sha would change: the code head is
-`ff421f628` and the branch head is its single child.
+**Branch head: `6a7c1a235`** on `comms-graph-20260930`, based on `720fb0c02`
 (the `dash-subagents-20260930` tip, which contains the `49dd69608` the host said
-lands first).
+lands first). The code head is `ff421f628`; the one commit above it adds this
+report. I did not amend to bake a sha into the file that the sha names — the
+sha would change the file and the file would change the sha — so the report says
+which commit is which.
 
-The branch is **local only** — `git push` fails from brain2 because no push
-credential is available here. It needs to be pushed by hand:
+**Pushed, and verified from the far side:**
 
-```bash
-cd <the fork>
-git push -u origin comms-graph-20260930:comms-graph-20260930
 ```
+$ git push -u origin comms-graph-20260930:comms-graph-20260930
+   6745a99d6..6a7c1a235  comms-graph-20260930 -> comms-graph-20260930
+
+$ GIT_TERMINAL_PROMPT=0 git ls-remote origin comms-graph-20260930
+6a7c1a235b81fbedc5b794b156781d2cf6856b80	refs/heads/comms-graph-20260930
+```
+
+An earlier hand-off said this branch could never be pushed from brain2. That was
+true when it was written and is false now — a credential helper has since become
+available — so the claim is corrected here rather than left standing. The
+`GIT_TERMINAL_PROMPT=0` matters: without it, `ls-remote` fails on the missing
+prompt and looks exactly like a permissions failure. I nearly filed that as "the
+push did not work".
 
 Commits, oldest first:
 
