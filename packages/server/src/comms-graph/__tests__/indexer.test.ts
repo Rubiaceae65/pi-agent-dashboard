@@ -560,6 +560,51 @@ describe("the caps are ENFORCED, not merely applied on the way out", () => {
     expect(held.nodeCount).toBeLessThanOrEqual(4);
   });
 
+  it("the reader itself is sensitive, so a nullish fallback cannot fake a pass", async () => {
+    // The tests above dereference (`held.metaCache.size`), so a RENAMED field
+    // gives a loud TypeError rather than a vacuous pass - verified by renaming
+    // the field across all six sites and watching 3 tests fail. That safety is a
+    // property of the code, though, not of any check.
+    //
+    // The failure this closes: if someone "hardens" internals() to
+    // `held.metaCache?.size ?? 0`, every assertion above silently degrades to
+    // comparing 0 against a cap. That passes for a correct indexer AND for one
+    // with every guard deleted, and no mutation would catch it. A green check
+    // that cannot see the thing it measures is worse than no check.
+    //
+    // So assert the reader is SENSITIVE: on a fixture where the answer is
+    // genuinely non-zero, it must report non-zero. A nullish fallback reports 0
+    // and fails here.
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })]);
+    // The meta cache is filled from the <sid>.meta.json sidecar, not from the
+    // transcript - a fixture without one leaves it at 0 and the assertion below
+    // would be asserting that a real reader sees nothing, which is how this test
+    // failed its first time.
+    fs.writeFileSync(
+      path.join(dir, "sessions", `${LEAD_A}.meta.json`),
+      JSON.stringify({ model: "minimax-plan/MiniMax-M3.1", contextTokens: 65_000, contextWindow: 262_144, status: "streaming", live: true }),
+    );
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    let at = Date.parse("2026-09-30T10:00:00.000Z");
+    for (let i = 0; i < 3; i++) {
+      at += 1000;
+      fs.appendFileSync(p, `${msg("alpha", "beta", `m${i}`, new Date(at).toISOString(), `hello ${i}`)}\n`);
+      ix.resetCounters();
+      await ix.scan();
+    }
+    const held = internals(ix);
+    // Every one of these has a known non-zero answer on this fixture. A reader
+    // that returned 0 for a missing or nullish field fails here, loudly, before
+    // it can make the cap tests above pass for the wrong reason.
+    expect(held.recentLength, "reader must actually see the ring").toBeGreaterThan(0);
+    expect(held.metaCacheSize, "reader must actually see the meta cache").toBeGreaterThan(0);
+    expect(held.idToKeyOrderLength, "reader must actually see the key order").toBeGreaterThan(0);
+    expect(held.nodeCount, "reader must actually see the node map").toBeGreaterThan(0);
+    expect(held.maxEdgeLines, "reader must actually see the edge lines").toBeGreaterThan(0);
+    expect(held.retainedBytes, "reader must actually measure retained bytes").toBeGreaterThan(0);
+  });
+
   it("ships defaults that are finite and in a sane range", () => {
     // Every cap test passes its own small values, so setting DEFAULTS to Infinity
     // left the suite green - the shipped numbers, the ones that will actually run
