@@ -521,7 +521,7 @@ export function createMemorySessionManager(
         // before the row leaves the registry.
         // See change: bound-dashboard-memory.
         const evicted = evictEndedOverflow();
-        if (evicted.length > 0) for (const id of evicted) mgr.onEvict?.(id);
+        if (evicted.length > 0) mgr.onEvict?.(evicted);
       }
     },
 
