@@ -11,8 +11,11 @@
 
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { writeSessionMeta } from "@blackbelt-technology/pi-dashboard-shared/session-meta.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLastBindReachability } from "../auth/bind-reachability-service.js";
@@ -72,6 +75,95 @@ function sentMessages(ws: ReturnType<typeof makeFakeWs>) {
     })
     .filter((m): m is Record<string, unknown> => !!m && typeof m === "object");
 }
+
+/**
+ * THE WIRING TEST for change: surface-rlm-subagent-children.
+ *
+ * WHY THIS FILE EXISTS, when rlm-subagent-snapshot.test.ts already appears to
+ * cover this. That file tests `withRlmChildrenInSnapshot` by CALLING IT
+ * DIRECTLY. It never starts a gateway. So it is a test of a function, not of
+ * the wire, and the two are separable: the function can be perfect while the
+ * one line that is supposed to call it is deleted, and every test stays green.
+ *
+ * Measured, on this build, by reverting the single call site in
+ * packages/server/src/pairing/browser-gateway.ts from
+ *
+ *     ...withRlmChildrenInSnapshot(snapshot),
+ *
+ * to its pre-change form
+ *
+ *     ...snapshot,
+ *
+ * and running all 19 snapshot/gateway test files: 19 passed, 193 tests passed,
+ * exit 0. Not one went red. The hunk the register calls "load-bearing" had no
+ * test at all - which is the defect this file closes.
+ *
+ * The subtlety that makes a naive control pass for the wrong reason: removing
+ * the wrapper must NOT remove `snapshot` with it. Deleting the whole spread
+ * line leaves a `sessions_snapshot` frame with no `sessions` key, and
+ * browser-gateway-snapshot-on-connect.test.ts fails two tests with
+ * "Cannot read properties of undefined (reading 'map')" - which LOOKS like the
+ * control working and is really the frame being malformed. A control that
+ * proves the wrong thing is worse than none, so the control here reverts to
+ * `...snapshot,`, which is what the code did before the change and is the only
+ * mutation that isolates the rlm merge.
+ *
+ * See change: surface-rlm-subagent-children.
+ */
+describe("browser-gateway on-connect snapshot is wired to the rlm scanner", () => {
+  const LEAD = "01a0f18d-643d-759e-969e-e29ad64012f6";
+  const CHILD = "01a0f18f-6154-709b-92d4-766431b6067d";
+
+  it("carries an rlm child on the WIRE, not just in the function's return value", () => {
+    const home = mkdtempSync(join(tmpdir(), "rlm-wire-"));
+    const prevDir = process.env.PI_CODING_AGENT_DIR;
+    try {
+      const agent = join(home, "agent");
+      const art = join(agent, "session-artifacts", LEAD, "sub-a");
+      mkdirSync(art, { recursive: true });
+      writeFileSync(join(art, "rlm-subagent.json"), JSON.stringify({
+        type: "rlm_subagent", status: "completed", rlmMaxDepth: 2,
+        childId: "sub-a", sessionName: "inv-components", sessionFile: `${CHILD}.jsonl`,
+      }));
+      writeFileSync(join(art, `${CHILD}.jsonl`), JSON.stringify({
+        type: "session", version: 3, id: CHILD,
+        timestamp: new Date().toISOString(),
+        cwd: "/projects/lead", rlmDepth: 1,
+      }) + "\n");
+      process.env.PI_CODING_AGENT_DIR = agent;
+
+      const manager = createMemorySessionManager();
+      manager.restore({
+        id: LEAD, cwd: "/projects/lead", source: "tui",
+        status: "ended", startedAt: 1, endedAt: 2,
+        hidden: false, dataUnavailable: true,
+      } as never);
+
+      const gateway = createBrowserGateway(
+        manager, createMemoryEventStore(() => false), makeStubPiGateway(),
+        undefined, undefined, makeStubOrderManager({}),
+      );
+      const ws = makeFakeWs();
+      gateway.wss.emit("connection", ws, {});
+
+      const snap = sentMessages(ws).find((m) => m.type === "sessions_snapshot") as
+        { sessions?: Array<{ id: string; childCount?: number }> } | undefined;
+
+      // This is the assertion the other file cannot make: it comes off the
+      // SOCKET, so it fails if the call site is removed, not only if the
+      // function breaks.
+      expect(snap).toBeDefined();
+      const ids = (snap?.sessions ?? []).map((s) => s.id);
+      expect(ids).toContain(CHILD);
+      const lead = (snap?.sessions ?? []).find((s) => s.id === LEAD);
+      expect(lead?.childCount).toBe(1);
+    } finally {
+      if (prevDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = prevDir;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("browser-gateway on-connect sessions_snapshot", () => {
   it("sends exactly one sessions_snapshot and no per-session session_added/sessions_reordered", () => {
