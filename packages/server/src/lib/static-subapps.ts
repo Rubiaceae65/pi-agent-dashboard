@@ -34,6 +34,9 @@ export const MOBILE_PREFIX = "/mobile";
 /** The workshop-map links page (workshop-map `make links`). */
 export const LINKS_PREFIX = "/links";
 
+/** The live agent communication graph (comms-graph-20260930). */
+export const GRAPH_PREFIX = "/graph";
+
 /**
  * Every static sub-app prefix.
  *
@@ -44,4 +47,4 @@ export const LINKS_PREFIX = "/links";
  * paths no other feature can own, and a 403 on a URL that serves nothing is
  * the direction to err in.
  */
-export const SUB_APP_PREFIXES: readonly string[] = [MOBILE_PREFIX, LINKS_PREFIX];
+export const SUB_APP_PREFIXES: readonly string[] = [MOBILE_PREFIX, LINKS_PREFIX, GRAPH_PREFIX];

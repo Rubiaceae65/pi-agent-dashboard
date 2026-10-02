@@ -245,6 +245,47 @@ State persists in a named volume; API keys seed into `auth.json` on first run (o
 
 ---
 
+## The comms graph (`/graph/`)
+
+A live picture of the communication network between agent sessions: every lead,
+relay successor, rlm child and external sender is a node, every message is an
+edge, and the parent/child and relay relations are drawn alongside them. It
+lives at **`/graph/`**, same origin and same guard as `/mobile/` and `/links/`,
+and reads one route: `GET /api/comms/graph`.
+
+![The comms graph, converged over a 336 MB session corpus](docs/shots/comms-graph-live.png)
+
+* **Live without a websocket.** The page polls `?since=<seq>` every 2 s. When
+  nothing moved the whole response is 379 bytes; when something did, the graph
+  is re-laid out and the edges that just carried a message flash. There is no
+  per-client server-side buffer, because there is no per-client server-side
+  anything: one indexer per corpus, keyed by the corpus path, capped at four.
+* **Read-only by construction.** No POST handler, no handle, no query parameter
+  that names a session to act on. It cannot send a message or change a session.
+* **Incremental.** The indexer tails by byte offset and never re-parses a byte
+  it has already parsed. Over a 336 MB / 877-file corpus: cold start 1356 ticks
+  in 38.9 s, RSS +107.4 MB; then 200 idle ticks cost +300 kB RSS and 0 bytes
+  read.
+* **Bounded everywhere.** `maxNodes`, `maxEdges`, `maxRecent`, `perEdgeLines`,
+  `maxFiles` and `maxBytesPerScan` are constructor options, so the bounds are
+  testable rather than asserted.
+* **First lines only, scrubbed on the way in** by the same rules the dashboard
+  uses elsewhere.
+
+Two deployment shapes, one page: behind the panels gateway the data is mounted
+at the same prefix (`/graph/api/` → `/api/comms/`), which the page tries first;
+on the dashboard alone it falls back to `/api/comms/graph`. The rule is
+`dataRouteCandidates()` in `public/graph/src/model.js` and it is unit-tested —
+including the part that a `200` is not proof the route exists, because this
+dashboard's SPA fallback answers an unmatched path with 200 and the HTML shell.
+
+Source: `packages/server/src/comms-graph/` (extract, indexer, redact, route) and
+`public/graph/` (model, layout, canvas, page). Tests:
+`packages/server/src/comms-graph/__tests__/`.
+
+Where every field comes from, how the footprint was measured, and the three
+bugs that measurement found: [`docs/comms-graph.md`](docs/comms-graph.md).
+
 ## Chinese UI
 
 PI Dashboard now includes a lightweight Simplified Chinese interface for the core operator workflow: onboarding, the session sidebar, chat composer, connection banners, Settings, provider setup, and package management.

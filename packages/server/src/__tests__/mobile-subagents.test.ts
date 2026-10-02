@@ -109,3 +109,45 @@ describe("pi-mobile sub-agent nesting", () => {
     }
   });
 });
+
+/**
+ * A literal `null` in `/api/sessions` must not take the whole list down.
+ *
+ * Found from the phone view by the verifier (checks-11): one null element in the
+ * payload makes `flattenWithChildren` throw on `s.parentSessionId`, so the page
+ * renders NOTHING - not a degraded list, not an error row: no list at all. One
+ * malformed row from one writer costs the reader the entire view.
+ *
+ * Two separate obligations, and both are tested:
+ *   - the helpers are TOTAL: they answer a question about any input, including
+ *     `null`, `undefined` and non-objects;
+ *   - the RENDERED list drops the junk row rather than carrying it, because a
+ *     row whose session is null cannot be drawn by anything downstream.
+ */
+describe("a malformed row cannot take the phone view down", () => {
+  let m: any;
+  beforeAll(async () => { m = await mod(); });
+
+  it("isRlmChild answers for null, undefined and non-objects", () => {
+    for (const junk of [null, undefined, 42, "session", [], true]) {
+      expect(m.isRlmChild(junk)).toBe(false);
+    }
+  });
+
+  it("indexChildrenByParent and topLevelRows survive a null element", () => {
+    const withJunk = [null, ...LISTING];
+    expect(() => m.indexChildrenByParent(withJunk)).not.toThrow();
+    expect(() => m.topLevelRows(withJunk)).not.toThrow();
+  });
+
+  it("flattenWithChildren renders every good row and drops the junk", () => {
+    const rows: Row[] = m.flattenWithChildren([null, ...LISTING, undefined]);
+    expect(rows.map((r) => r.session.id).sort()).toEqual([LEAD, RESEARCH, MAP, INV, SURVEY].sort());
+    expect(rows.every((r) => r.session != null)).toBe(true);
+  });
+
+  it("an ALL-junk payload is empty, not an exception", () => {
+    expect(m.flattenWithChildren([null, null])).toEqual([]);
+    expect(m.flattenWithChildren([])).toEqual([]);
+  });
+});

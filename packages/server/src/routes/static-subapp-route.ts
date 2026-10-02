@@ -40,7 +40,7 @@ import type { FastifyInstance } from "fastify";
 // list without importing `routes/`. Re-exported here because this is the module
 // that registers the routes, and a caller that only wants the constants should
 // not have to know that.
-export { LINKS_PREFIX, MOBILE_PREFIX, SUB_APP_PREFIXES } from "../lib/static-subapps.js";
+export { GRAPH_PREFIX, LINKS_PREFIX, MOBILE_PREFIX, SUB_APP_PREFIXES } from "../lib/static-subapps.js";
 
 /** Normalise a sub-app prefix to a leading slash and no trailing slash. */
 function normalizePrefix(prefix: string): string {

@@ -1,0 +1,627 @@
+/**
+ * The indexer: incremental, bounded, and honest under churn.
+ *
+ * These are the three properties the job's constraints are actually about, so
+ * each one is stated as a test that can FAIL, not as a comment:
+ *
+ *   - INCREMENTAL — a tick with nothing appended must read zero bytes. The
+ *     alternative (re-parse 68 MB per poll) is not slow by accident: at 68 MB
+ *     and a 2 s poll it is 34 MB/s of wasted IO forever.
+ *   - BOUNDED — 50 000 appended messages must not grow the node map, the edge
+ *     map, or the recent ring past their caps. Unbounded maps keyed by session
+ *     are exactly what /projects/memory-audit-20260930/REPORT.md calls the
+ *     estate's scarce resource.
+ *   - SLOW CLIENT — a client that polls for an hour must not cost the indexer
+ *     one byte of state. There is no per-client buffer at all, and this test is
+ *     what makes that claim falsifiable.
+ *
+ * The fixtures are written into a fresh temp dir per test; nothing here reads
+ * the real `~/.prime`.
+ */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { CommsGraphIndexer } from "../indexer.js";
+
+const tmpDirs: string[] = [];
+function fixtureDir(): string {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "comms-graph-"));
+  tmpDirs.push(d);
+  return d;
+}
+afterEach(() => {
+  for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+});
+
+const LEAD_A = "aaaaaaaa-0000-0000-0000-000000000001";
+const LEAD_B = "bbbbbbbb-0000-0000-0000-000000000002";
+const CHILD = "cccccccc-0000-0000-0000-000000000003";
+/** The session id a NAMED endpoint really carries on the wire. */
+const SID: Record<string, string> = { alpha: LEAD_A, beta: LEAD_B };
+
+/** A lead transcript, at the real path: <primeDir>/sessions/<uuid>.jsonl. */
+function writeSession(dir: string, id: string, lines: string[]): string {
+  fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+  const p = path.join(dir, "sessions", `${id}.jsonl`);
+  fs.writeFileSync(p, lines.map((l) => `${l}\n`).join(""));
+  return p;
+}
+/**
+ * A delivered message. `toName: null` reproduces the real shape that makes
+ * name resolution necessary: 257 of 773 records on this Brain carry a target
+ * with a sessionId and NO sessionName.
+ */
+function msg(fromName: string | null, toName: string | null, id: string, at: string, line: string) {
+  return JSON.stringify({
+    type: "custom_message",
+    customType: "agent_message",
+    timestamp: at,
+    details: {
+      id,
+      message: `${line}\n\nthe rest of the body, which the graph must never show`,
+      from: fromName
+        ? { sessionName: fromName, sessionId: SID[fromName] ?? fromName, runtimeKind: "top-level" }
+        : { clientId: "hostcli01" },
+      // The real shape: the target carries a sessionId and NO sessionName.
+      target: { sessionId: SID[toName ?? "beta"] ?? toName ?? LEAD_B, runtimeKind: "top-level" },
+    },
+  });
+}
+function header(id: string, depth = 0, cwd = "/projects/x") {
+  return JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-09-30T10:00:00.000Z", cwd, rlmDepth: depth });
+}
+
+describe("incremental reads", () => {
+  it("reads nothing at all when no file has grown", async () => {
+    const dir = fixtureDir();
+    writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const first = ix.stats();
+    expect(first.bytesRead).toBeGreaterThan(0);
+
+    ix.resetCounters();
+    await ix.scan();
+    const second = ix.stats();
+    // The cursor is at EOF, so the second pass stats the file and reads 0 bytes.
+    expect(second.bytesRead).toBe(0);
+    expect(second.linesParsed).toBe(0);
+    expect(second.seq).toBe(first.seq);
+  });
+
+  it("parses only the bytes appended since the last tick", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A), msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "first")]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+
+    fs.appendFileSync(p, `${msg("alpha", "beta", "m2", "2026-09-30T10:02:00.000Z", "second")}\n`);
+    ix.resetCounters();
+    await ix.scan();
+    const s = ix.stats();
+    expect(s.linesParsed).toBe(1);
+    expect(s.bytesRead).toBeGreaterThan(0);
+    expect(s.bytesRead).toBeLessThan(2000);
+  });
+
+  it("never parses a half-written last line, and picks it up once it is whole", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A)]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+
+    // Exactly what an appender does: write bytes, then the newline later.
+    const partial = `${msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "torn")}`;
+    fs.appendFileSync(p, partial.slice(0, 40));
+    ix.resetCounters();
+    await ix.scan();
+    expect(ix.stats().linesParsed).toBe(0);
+    expect(ix.snapshot().edges).toHaveLength(0);
+
+    fs.appendFileSync(p, partial.slice(40) + "\n");
+    ix.resetCounters();
+    await ix.scan();
+    expect(ix.stats().linesParsed).toBe(1);
+    expect(ix.snapshot().edges).toHaveLength(1);
+  });
+
+  it("advances past a line bigger than a whole tick's budget instead of re-reading it forever", async () => {
+    // THE REGRESSION THIS EXISTS FOR. The real corpus has a 1.6 MB single
+    // record — a transcript entry carrying a whole pasted document — which is
+    // six times the 256 KB per-tick budget. The first version of tail()
+    // returned early when no newline fitted in the window, without moving the
+    // cursor, so that file was re-read from the same offset on every tick
+    // forever: `truncated` never cleared, the graph never converged, and the
+    // "steady state" measurement reported 6.5 MB of reads per tick and called
+    // it a leak when it was a stall. Found by measuring, not by reading.
+    const dir = fixtureDir();
+    const budget = 4 * 1024;
+    // beta exists as a real session, so the target's sessionId resolves to a
+    // name and the assertion is about the EDGE rather than about resolution.
+    writeSession(dir, LEAD_B, [
+      header(LEAD_B),
+      JSON.stringify({ type: "session_info", name: "beta", timestamp: "2026-09-30T10:00:00.000Z" }),
+    ]);
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A)]);
+    const huge = "x".repeat(40 * 1024); // ten times the budget
+    fs.appendFileSync(
+      p,
+      `${JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })}\n${huge}\n${msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "after the monster")}\n`,
+    );
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxBytesPerScan: budget });
+    // do-while, deliberately: `truncated` is false BEFORE the first scan, so a
+    // while-loop guard written the obvious way runs zero ticks and asserts
+    // nothing. (This test asserted an empty edge list and passed that way once.)
+    let ticks = 0;
+    do {
+      await ix.scan();
+      ticks++;
+    } while (ix.stats().truncated && ticks < 100);
+    // It converges, and it converges in a bounded number of ticks: the cursor
+    // moves past the long line rather than stalling on it.
+    expect(ix.stats().truncated).toBe(false);
+    expect(ticks).toBeLessThan(100);
+    // and the record AFTER the long line was still read — skipping one
+    // oversized line must not cost the rest of the file
+    expect(ix.snapshot().edges.map((e) => `${e.from}->${e.to}`)).toContain("alpha->beta");
+  });
+
+  it("re-reads from zero when a file is replaced by a SHORTER one (rotation)", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A), msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "one"), msg("alpha", "beta", "m2", "2026-09-30T10:02:00.000Z", "two")]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    expect(ix.stats().linesParsed).toBe(3); // header + two messages
+
+    fs.writeFileSync(p, `${header(LEAD_A)}\n`);
+    ix.resetCounters();
+    await ix.scan();
+    // Rotation is detected and the file re-read, NOT skipped because the
+    // cursor is past the new EOF — the bug that silently freezes a node.
+    expect(ix.stats().linesParsed).toBe(1);
+  });
+});
+
+describe("the graph it produces", () => {
+  it("counts direction, recency and shows only the first line", async () => {
+    const dir = fixtureDir();
+    writeSession(dir, LEAD_B, [
+      header(LEAD_B),
+      JSON.stringify({ type: "session_info", name: "beta", timestamp: "2026-09-30T10:00:00.000Z" }),
+    ]);
+    writeSession(dir, LEAD_A, [
+      header(LEAD_A),
+      JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }),
+      msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "alpha tells beta one thing"),
+      msg("alpha", "beta", "m2", "2026-09-30T10:05:00.000Z", "alpha tells beta another thing"),
+      msg("beta", "alpha", "m3", "2026-09-30T10:06:00.000Z", "beta answers"),
+    ]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const snap = ix.snapshot();
+
+    const a2b = snap.edges.find((e) => e.from === "alpha" && e.to === "beta");
+    expect(a2b).toMatchObject({ kind: "message", count: 2, lastAt: "2026-09-30T10:05:00.000Z" });
+    expect(a2b?.lines).toEqual([
+      { at: "2026-09-30T10:01:00.000Z", firstLine: "alpha tells beta one thing" },
+      { at: "2026-09-30T10:05:00.000Z", firstLine: "alpha tells beta another thing" },
+    ]);
+    // The body never reaches the snapshot. Not truncated — absent.
+    expect(JSON.stringify(snap)).not.toContain("the rest of the body");
+
+    const b2a = snap.edges.find((e) => e.from === "beta" && e.to === "alpha");
+    expect(b2a).toMatchObject({ kind: "message", count: 1 });
+  });
+
+  it("takes the context %, the model and the live flag from <sid>.meta.json", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [
+      header(LEAD_A),
+      JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }),
+    ]);
+    fs.writeFileSync(
+      path.join(dir, "sessions", `${LEAD_A}.meta.json`),
+      JSON.stringify({ model: "minimax-plan/MiniMax-M3.1", contextTokens: 65_000, contextWindow: 262_144, status: "streaming", live: false }),
+    );
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const node = ix.snapshot().nodes[0];
+    expect(node.model).toBe("minimax-plan/MiniMax-M3.1");
+    expect(node.contextPct).toBe(25);
+    // live:false while the daemon still calls it streaming is a stalled worker,
+    // and the graph must not keep drawing it as working
+    expect(node.state).toBe("stalled");
+    void p;
+  });
+
+  it("scrubs a credential out of the first line on the way IN, not on the way out", async () => {
+    const dir = fixtureDir();
+    writeSession(dir, LEAD_A, [
+      header(LEAD_A),
+      JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }),
+      msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "planner token: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 is in the config"),
+    ]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const wire = JSON.stringify(ix.snapshot());
+    expect(wire).not.toContain("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    expect(wire).toContain("planner token: [redacted] is in the config");
+  });
+
+  it("resolves a target that has no sessionName to the name its own file declares", async () => {
+    const dir = fixtureDir();
+    // beta's file declares the name; alpha's message names only the sessionId.
+    writeSession(dir, LEAD_B, [
+      header(LEAD_B),
+      JSON.stringify({ type: "session_info", name: "beta", timestamp: "2026-09-30T10:00:00.000Z" }),
+    ]);
+    writeSession(dir, LEAD_A, [
+      header(LEAD_A),
+      JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }),
+      msg("alpha", null, "m1", "2026-09-30T10:01:00.000Z", "hello beta"),
+    ]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const snap = ix.snapshot();
+    expect(snap.edges.map((e) => `${e.from}->${e.to}`)).toContain("alpha->beta");
+    // and no orphan node keyed by the raw id survives
+    expect(snap.nodes.map((n) => n.key)).not.toContain(LEAD_B);
+  });
+
+  it("reads parents and depth from the rlm ledger, and marks a deleted child gone", async () => {
+    const dir = fixtureDir();
+    fs.mkdirSync(path.join(dir, "rlm-ledger"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "rlm-ledger", "L.jsonl"),
+      [
+        JSON.stringify({ v: 1, op: "meta", at: "2026-09-30T10:00:00.000Z" }),
+        JSON.stringify({ v: 1, op: "spawn", at: "2026-09-30T10:01:00.000Z", childId: "sub-x", parent: path.join(dir, `${LEAD_A}.jsonl`), child: path.join(dir, "artifacts", LEAD_A, "sub-x", `${CHILD}.jsonl`), depth: 1, name: "reader" }),
+        JSON.stringify({ v: 1, op: "delete", at: "2026-09-30T10:09:00.000Z", childId: "sub-x", child: path.join(dir, "artifacts", LEAD_A, "sub-x", `${CHILD}.jsonl`), reason: "user" }),
+      ].join("\n") + "\n",
+    );
+    const childDir = path.join(dir, "artifacts", LEAD_A, "sub-x");
+    fs.mkdirSync(childDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(childDir, `${CHILD}.jsonl`),
+      `${header(CHILD, 1)}\n${JSON.stringify({ type: "session_info", name: "reader", timestamp: "2026-09-30T10:01:00.000Z" })}\n`,
+    );
+    writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })]);
+
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const snap = ix.snapshot();
+    const child = snap.nodes.find((n) => n.name === "reader");
+    expect(child).toMatchObject({ parent: "alpha", depth: 1, kind: "child", gone: true });
+    expect(snap.edges).toContainEqual(expect.objectContaining({ kind: "spawn", from: "alpha", to: "reader", gone: true }));
+  });
+
+  it("reports the working state, goal and model a node's own file records", async () => {
+    const dir = fixtureDir();
+    writeSession(dir, LEAD_A, [
+      header(LEAD_A),
+      JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }),
+      JSON.stringify({ type: "model_change", timestamp: "2026-09-30T10:00:01.000Z", provider: "local-qwen", modelId: "qwen3.8-27b" }),
+      JSON.stringify({ type: "agent_status", timestamp: "2026-09-30T10:00:02.000Z", status: { taskState: "error", summary: "429" } }),
+      JSON.stringify({ type: "custom", customType: "thread_goal_state", timestamp: "2026-09-30T10:00:03.000Z", data: { status: "active", objective: "ship it", tokensUsed: 12 } }),
+    ]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    expect(ix.snapshot().nodes[0]).toMatchObject({
+      name: "alpha",
+      model: "local-qwen/qwen3.8-27b",
+      state: "error",
+      goalStatus: "active",
+    });
+  });
+});
+
+describe("bounded memory under churn", () => {
+  it("caps nodes, edges and the recent ring, and says how much it dropped", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxNodes: 50, maxEdges: 20, maxRecent: 30, perEdgeLines: 3 });
+    await ix.scan();
+
+    // 500 appends, 100 distinct peers -> 100 nodes wanted, 50 allowed.
+    let at = Date.parse("2026-09-30T10:00:00.000Z");
+    for (let i = 0; i < 500; i++) {
+      at += 1000;
+      fs.appendFileSync(p, `${msg("alpha", `peer-${i % 100}`, `m${i}`, new Date(at).toISOString(), `line ${i}`)}\n`);
+      if (i % 25 === 0) {
+        ix.resetCounters();
+        await ix.scan();
+      }
+    }
+    ix.resetCounters();
+    await ix.scan();
+
+    const snap = ix.snapshot();
+    expect(snap.nodes.length).toBeLessThanOrEqual(50);
+    expect(snap.edges.length).toBeLessThanOrEqual(20);
+    expect(snap.recent.length).toBeLessThanOrEqual(30);
+    for (const e of snap.edges) expect(e.lines.length).toBeLessThanOrEqual(3);
+    // The caps are not a silent truncation: the client is told.
+    expect(ix.stats().nodesDropped).toBeGreaterThan(0);
+    expect(ix.stats().edgesDropped).toBeGreaterThan(0);
+  });
+
+  it("keeps a bounded footprint as the RING fills, not as the corpus grows", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxRecent: 64, perEdgeLines: 4 });
+    await ix.scan();
+    let at = Date.parse("2026-09-30T10:00:00.000Z");
+    for (let round = 0; round < 40; round++) {
+      for (let i = 0; i < 50; i++) {
+        at += 1000;
+        fs.appendFileSync(p, `${msg("alpha", "beta", `m${round}-${i}`, new Date(at).toISOString(), `x${"y".repeat(500)} ${round}-${i}`)}\n`);
+      }
+      ix.resetCounters();
+      await ix.scan();
+      if (round === 4 || round === 39) {
+        global.gc?.();
+      }
+    }
+    // The INTERNAL structure, not the projection.
+    //
+    // This test used to measure JSON.stringify(ix.snapshot()).length and that is
+    // how it came to pass with every eviction guard deleted: snapshot() RE-APPLIES
+    // the caps on the way out (recent.slice(-maxRecent), e.lines.slice(-perEdgeLines)),
+    // so the serialised answer is bounded whether or not the thing being serialised
+    // is. With the four guards removed it read 6 995 bytes while 294 004 were
+    // actually retained - under-reported 42x, with 89% headroom to spare.
+    //
+    // It also captured process.memoryUsage().rss into a global that nothing ever
+    // asserted, which is worse than dead code: it read like a memory measurement.
+    //
+    // So: measure what is held, not what is shown.
+    const held = internals(ix);
+    expect(held.recentLength).toBeLessThanOrEqual(64);
+    expect(held.maxEdgeLines).toBeLessThanOrEqual(4);
+    expect(held.retainedBytes).toBeLessThan(64 * 1024);
+  });
+
+  it("spends a BOUNDED amount of work per tick, so a cold start returns something", async () => {
+    const dir = fixtureDir();
+    for (let s = 0; s < 6; s++) {
+      const lines = [header(`${LEAD_A.slice(0, -1)}${s}`), JSON.stringify({ type: "session_info", name: `lead-${s}`, timestamp: "2026-09-30T10:00:00.000Z" })];
+      for (let i = 0; i < 4000; i++) {
+        lines.push(msg(`lead-${s}`, `lead-${(s + 1) % 6}`, `m${s}-${i}`, new Date(Date.parse("2026-09-30T10:00:00.000Z") + i * 1000).toISOString(), `line ${i} ${"z".repeat(300)}`));
+      }
+      writeSession(dir, `${LEAD_A.slice(0, -1)}${s}`, lines);
+    }
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxBytesPerScan: 32 * 1024 });
+    const started = process.hrtime.bigint();
+    await ix.scan();
+    const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    // The first tick of a 24 000-message corpus reads at most the budget and
+    // returns; the rest arrives on later ticks. A cold start must not block
+    // the HTTP response it arrived on.
+    expect(ix.stats().bytesRead).toBeLessThanOrEqual(32 * 1024);
+    expect(ms).toBeLessThan(2000);
+
+    let ticks = 1;
+    while (ix.stats().truncated && ticks < 500) {
+      await ix.scan();
+      ticks++;
+    }
+    expect(ix.stats().truncated).toBe(false);
+    const snap = ix.snapshot();
+    expect(snap.edges.find((e) => e.from === "lead-0")?.count).toBe(4000);
+  });
+});
+
+describe("a slow client", () => {
+  it("costs the indexer nothing: 5 000 snapshots leave the state identical", async () => {
+    const dir = fixtureDir();
+    writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }), msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "one")]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    // `generatedAt` moves on every call by design; everything else must not.
+    const stable = (s: unknown) => JSON.stringify(s).replace(/"generatedAt":"[^"]+"/, '"generatedAt":"-"');
+    const before = stable(ix.snapshot());
+    for (let i = 0; i < 5_000; i++) {
+      const s = ix.snapshot({ windowMs: 3_600_000 });
+      expect(s.nodes.length).toBeGreaterThan(0);
+    }
+    expect(stable(ix.snapshot())).toBe(before);
+  });
+
+  it("serves an unchanged graph to a client using `since` without re-sending it", async () => {
+    const dir = fixtureDir();
+    writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }), msg("alpha", "beta", "m1", "2026-09-30T10:01:00.000Z", "one")]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    await ix.scan();
+    const seq = ix.snapshot().seq;
+    const delta = ix.snapshot({ since: seq });
+    expect(delta.seq).toBe(seq);
+    expect(delta.changed).toBe(false);
+    expect(delta.edges).toEqual([]);
+  });
+
+  it("rate-limits the scan itself, so 20 clients polling do not mean 20 scans", async () => {
+    const dir = fixtureDir();
+    writeSession(dir, LEAD_A, [header(LEAD_A)]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 60_000 });
+    await ix.scan();
+    const first = ix.stats().scans;
+    for (let i = 0; i < 20; i++) await ix.scan();
+    expect(ix.stats().scans).toBe(first);
+    expect(ix.snapshot().seq).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The indexer's INTERNAL state, for tests that must not be fooled by the
+ * projection.
+ *
+ * `snapshot()` applies every cap again on the way out, so asserting on it proves
+ * the caps exist, never that anything enforces them. On a mutant with all four
+ * eviction guards removed, snapshot() still looked perfect: 6 995 serialised
+ * bytes while 294 004 were actually held. These accessors are how a test sees
+ * the thing that would leak.
+ *
+ * The fields are `private` in TypeScript, which is compile-time only; that is
+ * deliberate here. A production accessor added purely to let a test watch the
+ * caps would be a second thing to keep in step, and the alternative is a test
+ * that cannot fail.
+ */
+function internals(ix: CommsGraphIndexer) {
+  const held = ix as unknown as {
+    recent: unknown[];
+    edges: Map<string, { lines: unknown[] }>;
+    metaCache: Map<string, unknown>;
+    idToKeyOrder: string[];
+    nodes: { size: number };
+  };
+  const edgeLines = [...held.edges.values()];
+  const retainedBytes =
+    JSON.stringify(held.recent).length +
+    edgeLines.reduce((n, e) => n + JSON.stringify(e.lines).length, 0);
+  return {
+    recentLength: held.recent.length,
+    maxEdgeLines: edgeLines.reduce((m, e) => Math.max(m, e.lines.length), 0),
+    metaCacheSize: held.metaCache.size,
+    idToKeyOrderLength: held.idToKeyOrder.length,
+    nodeCount: held.nodes.size,
+    retainedBytes,
+  };
+}
+
+describe("a corpus it is not allowed to read is not a corpus it has read", () => {
+  it("says truncated when a root cannot be listed, instead of quietly dropping it", async () => {
+    // A FILE where a directory belongs: ENOTDIR, deterministic whatever uid the
+    // suite runs as. The real incident was EACCES on session-artifacts, which
+    // made the page report 206 nodes and `truncated: false` over a corpus with
+    // 890 sessions in it - every rlm child silently missing.
+    const primeDir = fs.mkdtempSync(path.join(os.tmpdir(), "comms-graph-unreadable-"));
+    fs.mkdirSync(path.join(primeDir, "sessions"), { recursive: true });
+    fs.writeFileSync(path.join(primeDir, "session-artifacts"), "not a directory\n");
+    const ix = new CommsGraphIndexer({ primeDir, minIntervalMs: 0 });
+    await ix.scan();
+    const s = ix.stats();
+    expect(s.dirsUnreadable).toBe(1);
+    expect(s.truncated).toBe(true);
+    fs.rmSync(primeDir, { recursive: true, force: true });
+  });
+
+  it("stays quiet about a root that simply is not there", async () => {
+    const primeDir = fs.mkdtempSync(path.join(os.tmpdir(), "comms-graph-absent-"));
+    fs.mkdirSync(path.join(primeDir, "sessions"), { recursive: true });
+    const ix = new CommsGraphIndexer({ primeDir, minIntervalMs: 0 });
+    await ix.scan();
+    expect(ix.stats().dirsUnreadable).toBe(0);
+    expect(ix.stats().truncated).toBe(false);
+    fs.rmSync(primeDir, { recursive: true, force: true });
+  });
+});
+
+describe("the caps are ENFORCED, not merely applied on the way out", () => {
+  // This block exists because verify-branches-20260930 deleted all four eviction
+  // guards - the `while` loops at the metaCache, perEdgeLines and maxRecent sites
+  // and the `if` at idToKeyOrder - and all 99 tests still passed. Each cap test
+  // asserted on ix.snapshot(), which re-applies every cap at projection time, so
+  // the output was bounded whether or not the retained structure was.
+  //
+  // The production code is correct: the defaults are finite and the guards are
+  // present. What was missing is anyone standing behind the guards. In a codebase
+  // whose scarcest resource is memory, an unpoliced bound is a comment.
+
+  it("holds no more than the cap in the ring, however many messages arrive", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxRecent: 30, perEdgeLines: 3 });
+    let at = Date.parse("2026-09-30T10:00:00.000Z");
+    for (let i = 0; i < 600; i++) {
+      at += 1000;
+      fs.appendFileSync(p, `${msg("alpha", "beta", `m${i}`, new Date(at).toISOString(), `x${"y".repeat(300)} ${i}`)}\n`);
+      ix.resetCounters();
+      await ix.scan();
+    }
+    // Against the STRUCTURE. With maxRecent: 30 the old suite was happy holding
+    // 2 000 of them, because the projection sliced it back down for display.
+    expect(internals(ix).recentLength).toBeLessThanOrEqual(30);
+    expect(internals(ix).maxEdgeLines).toBeLessThanOrEqual(3);
+  });
+
+  it("keeps the per-file and per-session maps inside their caps", async () => {
+    const dir = fixtureDir();
+    // Many sessions, so metaCache and idToKeyOrder both have something to chew.
+    for (let i = 0; i < 12; i++) {
+      const sid = `00000000-0000-4000-8000-0000000000${(10 + i).toString().padStart(2, "0")}`;
+      writeSession(dir, sid, [header(sid), JSON.stringify({ type: "session_info", name: `s${i}`, timestamp: "2026-09-30T10:00:00.000Z" })]);
+    }
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxNodes: 4, maxFiles: 6 });
+    await ix.scan();
+    const held = internals(ix);
+    expect(held.metaCacheSize).toBeLessThanOrEqual(4);
+    expect(held.idToKeyOrderLength).toBeLessThanOrEqual(4);
+    expect(held.nodeCount).toBeLessThanOrEqual(4);
+  });
+
+  it("the reader itself is sensitive, so a nullish fallback cannot fake a pass", async () => {
+    // The tests above dereference (`held.metaCache.size`), so a RENAMED field
+    // gives a loud TypeError rather than a vacuous pass - verified by renaming
+    // the field across all six sites and watching 3 tests fail. That safety is a
+    // property of the code, though, not of any check.
+    //
+    // The failure this closes: if someone "hardens" internals() to
+    // `held.metaCache?.size ?? 0`, every assertion above silently degrades to
+    // comparing 0 against a cap. That passes for a correct indexer AND for one
+    // with every guard deleted, and no mutation would catch it. A green check
+    // that cannot see the thing it measures is worse than no check.
+    //
+    // So assert the reader is SENSITIVE: on a fixture where the answer is
+    // genuinely non-zero, it must report non-zero. A nullish fallback reports 0
+    // and fails here.
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })]);
+    // The meta cache is filled from the <sid>.meta.json sidecar, not from the
+    // transcript - a fixture without one leaves it at 0 and the assertion below
+    // would be asserting that a real reader sees nothing, which is how this test
+    // failed its first time.
+    fs.writeFileSync(
+      path.join(dir, "sessions", `${LEAD_A}.meta.json`),
+      JSON.stringify({ model: "minimax-plan/MiniMax-M3.1", contextTokens: 65_000, contextWindow: 262_144, status: "streaming", live: true }),
+    );
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0 });
+    let at = Date.parse("2026-09-30T10:00:00.000Z");
+    for (let i = 0; i < 3; i++) {
+      at += 1000;
+      fs.appendFileSync(p, `${msg("alpha", "beta", `m${i}`, new Date(at).toISOString(), `hello ${i}`)}\n`);
+      ix.resetCounters();
+      await ix.scan();
+    }
+    const held = internals(ix);
+    // Every one of these has a known non-zero answer on this fixture. A reader
+    // that returned 0 for a missing or nullish field fails here, loudly, before
+    // it can make the cap tests above pass for the wrong reason.
+    expect(held.recentLength, "reader must actually see the ring").toBeGreaterThan(0);
+    expect(held.metaCacheSize, "reader must actually see the meta cache").toBeGreaterThan(0);
+    expect(held.idToKeyOrderLength, "reader must actually see the key order").toBeGreaterThan(0);
+    expect(held.nodeCount, "reader must actually see the node map").toBeGreaterThan(0);
+    expect(held.maxEdgeLines, "reader must actually see the edge lines").toBeGreaterThan(0);
+    expect(held.retainedBytes, "reader must actually measure retained bytes").toBeGreaterThan(0);
+  });
+
+  it("ships defaults that are finite and in a sane range", () => {
+    // Every cap test passes its own small values, so setting DEFAULTS to Infinity
+    // left the suite green - the shipped numbers, the ones that will actually run
+    // in production, were asserted by nothing at all. Read them off a real
+    // instance rather than importing the constant, so this fails if DEFAULTS is
+    // removed, renamed or loosened.
+    const ix = new CommsGraphIndexer({ primeDir: fixtureDir(), minIntervalMs: 0 });
+    const o = (ix as unknown as { opts: Record<string, number> }).opts;
+    for (const key of ["maxNodes", "maxEdges", "maxRecent", "perEdgeLines", "maxFiles", "maxBytesPerScan"]) {
+      expect(Number.isFinite(o[key]), `${key} must be finite, got ${o[key]}`).toBe(true);
+      expect(o[key], `${key} must be positive`).toBeGreaterThan(0);
+    }
+    // Bounds that are finite but useless are the other failure: a cap of 10^9 is
+    // technically bounded and practically a leak.
+    expect(o.maxNodes).toBeLessThanOrEqual(100_000);
+    expect(o.maxRecent).toBeLessThanOrEqual(100_000);
+    expect(o.perEdgeLines).toBeLessThanOrEqual(1_000);
+    expect(o.maxFiles).toBeLessThanOrEqual(100_000);
+  });
+});
