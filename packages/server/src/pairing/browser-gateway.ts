@@ -163,6 +163,15 @@ import { ResyncRequesterRegistry, resyncRequestIdOf } from "./subagent-resync-ro
  */
 const CRITICAL_FRAMES_PER_DELIVERY = 4;
 
+/**
+ * How many distinct sessions the per-session drop counters remember
+ * (audit §5.8): a permanent `Map<string, number>` keyed by session id is
+ * unbounded in a long-lived process. 500 entries is ~60 KiB at the measured
+ * 100-150 B/entry, which is far above the ~122 distinct sessions a busy day
+ * produces, so the diagnostic loses nothing in practice.
+ */
+const MAX_DROP_COUNTER_SESSIONS = 500;
+
 /** Slack added to MAX_WS_BUFFER to form the absolute critical-frame ceiling. */
 const CRITICAL_FRAME_SLACK_BYTES = 1 * 1024 * 1024; // 1 MB
 
@@ -344,6 +353,11 @@ export interface BrowserGateway {
    * See change: fix-backpressure-status-and-subagent-frames.
    */
   getSocketBufferOccupancy(): SocketBufferOccupancy;
+  /**
+   * Process-wide send-buffer budget: the ceiling and the running count of
+   * clients terminated for breaching it. See change: bound-dashboard-memory.
+   */
+  getTotalBufferBudget(): { budgetBytes: number; terminations: number };
   /**
    * TEST-ONLY back-pressure injector. Real saturation is caused by a browser
    * failing to drain its own socket, which a browser automation driver cannot
@@ -846,6 +860,108 @@ export function createBrowserGateway(
   /** Max buffered bytes per browser WebSocket before dropping messages (0 = no limit) */
   const MAX_WS_BUFFER = maxWsBufferBytes ?? 4 * 1024 * 1024; // 4MB default
 
+  // ── Total send-buffer budget (change: bound-dashboard-memory) ──
+  // MAX_WS_BUFFER bounds ONE socket. A process with N browser clients bounds
+  // itself at N x MAX_WS_BUFFER, so the cap does not bound the PROCESS: the
+  // dashboard's memory is a function of how many clients are connected AND
+  // stalled, which is unbounded from the server's side. Measured on the
+  // pre-fix tree: 6 stalled clients parked 24.5 MiB (25,702,212 B), and the
+  // arithmetic scales with the client count.
+  //
+  // This budget bounds the SUM. When the total crosses it, the socket holding
+  // the most parked bytes is TERMINATED (not shed): a shed frame still leaves
+  // the backlog parked, so shedding cannot bring the total down. Terminating
+  // releases the buffer, the browser reconnects, and the bootstrap after a
+  // reconnect is small. This is the "drop or disconnect a slow client with a
+  // log line" rule, at the granularity that actually bounds memory.
+  //
+  // Sized at 8 MiB: two clients' worth of the 4 MiB per-socket cap. Generous
+  // enough that a couple of briefly-slow clients are never dropped, tight
+  // enough that a fleet of stalled ones cannot hold hundreds of MiB.
+  const TOTAL_WS_BUFFER_BUDGET = 8 * 1024 * 1024;
+  let totalBufferBudgetTerminations = 0;
+
+  /**
+   * Running lower-bound on the total bytes parked across browser sockets.
+   *
+   * The exact sum is O(sockets) to compute, and asking on every frame would
+   * make the cost of a fan-out O(sockets x frames). It is also unnecessary:
+   * the ONLY thing that increases the total is our own `ws.send`, and the
+   * length is known at the send site. So the total is tracked in O(1) as a
+   * running count, and the exact sum is recomputed only when that count says
+   * the budget may have been crossed. Draining is the only force that lowers
+   * the real total, so the running count is a sound trigger, never an
+   * under-count.
+   */
+  let runningBufferTotal = 0;
+
+  /** Add a just-sent frame's length to the running total. O(1). */
+  function accountSent(bytes: number): void {
+    runningBufferTotal += bytes;
+  }
+
+  /**
+   * Enforce the total budget. Returns true when the socket was terminated and
+   * the caller must not send to it.
+   *
+   * Called at the send-decision sites, but gated on the O(1) running count —
+   * the exact O(sockets) rescan happens only when the budget may be crossed,
+   * so a healthy dashboard pays one integer add per frame.
+   *
+   * Only an ACTUALLY stalled socket is a candidate. The victim is the single
+   * largest holder: evicting the biggest frees the most memory for one lost
+   * client, and a fast client is never punished for a slow peer's backlog.
+   *
+   * This must be reachable BEFORE the callers' per-socket shed, because a
+   * socket at the per-socket cap is still 4 MiB of parked memory, and N
+   * clients parked in lockstep all reach the cap together. Measuring the
+   * pre-fix tree showed exactly that: 6 clients at 4.28 MiB each (25.7 MB)
+   * before the first shed fired.
+   */
+  function overTotalBufferBudget(ws: WebSocket): boolean {
+    if (MAX_WS_BUFFER === 0) return false; // no-limit mode: no budget either
+    if (runningBufferTotal <= TOTAL_WS_BUFFER_BUDGET) return false;
+    if (!subscriptions.has(ws)) return false;
+    // Rescan: the running count has not seen any draining.
+    let total = 0;
+    let worst: WebSocket | undefined;
+    let worstBytes = 0;
+    for (const client of subscriptions.keys()) {
+      if (client.readyState !== WebSocket.OPEN) continue;
+      const buffered = client.bufferedAmount;
+      total += buffered;
+      if (buffered > worstBytes) {
+        worstBytes = buffered;
+        worst = client;
+      }
+    }
+    runningBufferTotal = total;
+    if (total <= TOTAL_WS_BUFFER_BUDGET) return false;
+    // The caller is only terminated when it IS the worst holder; otherwise the
+    // worst holder is dropped here and the caller sheds as it otherwise would.
+    if (worst !== ws) return false;
+    const diag = socketDiag.get(ws);
+    if (diag) diag.cause = "stalled";
+    console.warn(
+      `[browser-gw] terminating stalled client (total send-buffer budget) ` +
+        `hop=server→browser totalBufferedAmount=${total} > TOTAL_WS_BUFFER_BUDGET=${TOTAL_WS_BUFFER_BUDGET} ` +
+        `clientBufferedAmount=${worstBytes} (total terminations=${totalBufferBudgetTerminations + 1})`,
+    );
+    totalBufferBudgetTerminations++;
+    // The terminated socket's backlog leaves the running count with it.
+    runningBufferTotal -= worstBytes;
+    dropPendingState(ws);
+    dropStatusDebt(ws);
+    closeOccupancySpan(ws);
+    ws.terminate();
+    return true;
+  }
+
+  /** Whether `ws` is one of the sockets this gateway fans out to. */
+  function isTrackedClient(ws: WebSocket): boolean {
+    return subscriptions.has(ws);
+  }
+
   // ── Critical-frame exemption bounds (change: fix-pending-prompt-lost-on-replay, D2) ──
   // A blocking frame (a pending-prompt replay / resync reply) bypasses the
   // MAX_WS_BUFFER shed ONLY while the socket stays under an ABSOLUTE ceiling
@@ -869,6 +985,25 @@ export function createBrowserGateway(
   const droppedFramesBySession = new Map<string, number>();
   let droppedBlockingTotal = 0;
   const droppedBlockingBySession = new Map<string, number>();
+  // These two tables are keyed by session id and would otherwise grow for the
+  // lifetime of the process (audit §5.8): every session that ever dropped a
+  // frame leaves an entry behind, and nothing ever deletes it. The COUNT is
+  // what matters for diagnosis, and it is already carried by the `_total`
+  // scalars; the per-session breakdown is a recency aid for the most recent
+  // MAX_DROP_COUNTER_SESSIONS sessions. Map preserves insertion order, so the
+  // oldest key is the first one iteration yields.
+  const rememberDrop = (table: Map<string, number>, sessionId: string): void => {
+    if (table.has(sessionId)) {
+      table.set(sessionId, (table.get(sessionId) ?? 0) + 1);
+      return;
+    }
+    table.set(sessionId, 1);
+    while (table.size > MAX_DROP_COUNTER_SESSIONS) {
+      const oldest = table.keys().next();
+      if (oldest.done) break;
+      table.delete(oldest.value);
+    }
+  };
   const DROP_WARN_WINDOW_MS = 5_000;
   let lastDropWarnAt = 0;
 
@@ -880,10 +1015,10 @@ export function createBrowserGateway(
   ) {
     if (frameClass === "blocking") {
       droppedBlockingTotal++;
-      if (sessionId) droppedBlockingBySession.set(sessionId, (droppedBlockingBySession.get(sessionId) ?? 0) + 1);
+      if (sessionId) rememberDrop(droppedBlockingBySession, sessionId);
     } else {
       droppedFramesTotal++;
-      if (sessionId) droppedFramesBySession.set(sessionId, (droppedFramesBySession.get(sessionId) ?? 0) + 1);
+      if (sessionId) rememberDrop(droppedFramesBySession, sessionId);
     }
     const now = Date.now();
     if (now - lastDropWarnAt >= DROP_WARN_WINDOW_MS) {
@@ -1286,6 +1421,12 @@ export function createBrowserGateway(
       if (pendingState.get(ws)?.map.size) flushPendingState(ws);
       const buffered = ws.bufferedAmount;
       noteOccupancy(ws, buffered, MAX_WS_BUFFER > 0 && buffered > MAX_WS_BUFFER);
+      // Total-budget enforcement runs BEFORE the per-socket shed, not inside
+      // it. A socket at the per-socket cap is still 4 MiB parked, and clients
+      // stalled in lockstep all reach that cap together — so a check that only
+      // ran at the shed site would first observe N x 4 MiB. See change:
+      // bound-dashboard-memory.
+      if (overTotalBufferBudget(ws)) return false;
       // Drop transcript messages if the send buffer is full (browser not consuming).
       // A `critical` frame (pending-prompt replay / resync reply) is exempt
       // from the shed while under the absolute ceiling and within its
@@ -1307,7 +1448,9 @@ export function createBrowserGateway(
         }
         if (ctx.criticalBudget !== undefined) ctx.criticalBudget.remaining--;
       }
-      ws.send(JSON.stringify(msg));
+      const payload = JSON.stringify(msg);
+      accountSent(Buffer.byteLength(payload));
+      ws.send(payload);
       // A delivered lifecycle frame is this socket's current truth for the id,
       // so it satisfies any older debt for that id (D2).
       const deliveredInfo = deliveryInfoOf(msg);
@@ -1369,12 +1512,16 @@ export function createBrowserGateway(
       if (pendingState.get(ws)?.map.size) flushPendingState(ws);
       const buffered = ws.bufferedAmount;
       noteOccupancy(ws, buffered, MAX_WS_BUFFER > 0 && buffered > MAX_WS_BUFFER);
+      // Total-budget enforcement BEFORE the shed, same rule and same reason as
+      // `sendTo`. See change: bound-dashboard-memory.
+      if (overTotalBufferBudget(ws)) continue;
       if (shouldShed(buffered)) {
         recordDroppedFrame(undefined, undefined, buffered, "transcript");
         // A shed registry frame is a debt, not a loss (D2).
         if (dirty !== undefined) recordStatusDebt(ws, dirty.id, dirty.kind, dirty.spawnRequestId);
         continue;
       }
+      accountSent(Buffer.byteLength(serialized));
       ws.send(serialized);
       // A delivered lifecycle frame is this socket's current truth for the id,
       // so it satisfies any older debt for that id (D2).
@@ -2289,6 +2436,18 @@ export function createBrowserGateway(
       // observed convergence window the spec's 1 s rather than 1 s + jitter.
       if (!enabled) for (const [ws] of subscriptions) flushStatusDebt(ws);
       return enabled;
+    },
+
+    /**
+     * Total send-buffer budget state — how many clients the process has
+     * terminated for holding more than `TOTAL_WS_BUFFER_BUDGET` across all
+     * sockets, and the budget itself. A non-zero count means clients are
+     * being dropped for not draining: the dashboard is fine, the clients are
+     * slow, and the count is how many reconnects to expect. See change:
+     * bound-dashboard-memory.
+     */
+    getTotalBufferBudget(): { budgetBytes: number; terminations: number } {
+      return { budgetBytes: TOTAL_WS_BUFFER_BUDGET, terminations: totalBufferBudgetTerminations };
     },
 
     getSocketBufferOccupancy(): SocketBufferOccupancy {
