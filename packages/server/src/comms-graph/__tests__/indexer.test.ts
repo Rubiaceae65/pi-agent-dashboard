@@ -361,15 +361,25 @@ describe("bounded memory under churn", () => {
       await ix.scan();
       if (round === 4 || round === 39) {
         global.gc?.();
-        (globalThis as { __ixRss?: number }).__ixRss = process.memoryUsage().rss;
-        (globalThis as { __ixSize?: number }).__ixSize = JSON.stringify(ix.snapshot()).length;
       }
     }
-    const g = globalThis as { __ixRss?: number; __ixSize?: number };
-    // 2 000 messages of 500 chars each have gone through. The serialised
-    // snapshot must not track that: 64 recent + 1 edge x 4 lines is a ceiling
-    // in the low tens of kB whatever the corpus does.
-    expect(g.__ixSize).toBeLessThan(64 * 1024);
+    // The INTERNAL structure, not the projection.
+    //
+    // This test used to measure JSON.stringify(ix.snapshot()).length and that is
+    // how it came to pass with every eviction guard deleted: snapshot() RE-APPLIES
+    // the caps on the way out (recent.slice(-maxRecent), e.lines.slice(-perEdgeLines)),
+    // so the serialised answer is bounded whether or not the thing being serialised
+    // is. With the four guards removed it read 6 995 bytes while 294 004 were
+    // actually retained - under-reported 42x, with 89% headroom to spare.
+    //
+    // It also captured process.memoryUsage().rss into a global that nothing ever
+    // asserted, which is worse than dead code: it read like a memory measurement.
+    //
+    // So: measure what is held, not what is shown.
+    const held = internals(ix);
+    expect(held.recentLength).toBeLessThanOrEqual(64);
+    expect(held.maxEdgeLines).toBeLessThanOrEqual(4);
+    expect(held.retainedBytes).toBeLessThan(64 * 1024);
   });
 
   it("spends a BOUNDED amount of work per tick, so a cold start returns something", async () => {
@@ -442,6 +452,43 @@ describe("a slow client", () => {
   });
 });
 
+/**
+ * The indexer's INTERNAL state, for tests that must not be fooled by the
+ * projection.
+ *
+ * `snapshot()` applies every cap again on the way out, so asserting on it proves
+ * the caps exist, never that anything enforces them. On a mutant with all four
+ * eviction guards removed, snapshot() still looked perfect: 6 995 serialised
+ * bytes while 294 004 were actually held. These accessors are how a test sees
+ * the thing that would leak.
+ *
+ * The fields are `private` in TypeScript, which is compile-time only; that is
+ * deliberate here. A production accessor added purely to let a test watch the
+ * caps would be a second thing to keep in step, and the alternative is a test
+ * that cannot fail.
+ */
+function internals(ix: CommsGraphIndexer) {
+  const held = ix as unknown as {
+    recent: unknown[];
+    edges: Map<string, { lines: unknown[] }>;
+    metaCache: Map<string, unknown>;
+    idToKeyOrder: string[];
+    nodes: { size: number };
+  };
+  const edgeLines = [...held.edges.values()];
+  const retainedBytes =
+    JSON.stringify(held.recent).length +
+    edgeLines.reduce((n, e) => n + JSON.stringify(e.lines).length, 0);
+  return {
+    recentLength: held.recent.length,
+    maxEdgeLines: edgeLines.reduce((m, e) => Math.max(m, e.lines.length), 0),
+    metaCacheSize: held.metaCache.size,
+    idToKeyOrderLength: held.idToKeyOrder.length,
+    nodeCount: held.nodes.size,
+    retainedBytes,
+  };
+}
+
 describe("a corpus it is not allowed to read is not a corpus it has read", () => {
   it("says truncated when a root cannot be listed, instead of quietly dropping it", async () => {
     // A FILE where a directory belongs: ENOTDIR, deterministic whatever uid the
@@ -467,5 +514,69 @@ describe("a corpus it is not allowed to read is not a corpus it has read", () =>
     expect(ix.stats().dirsUnreadable).toBe(0);
     expect(ix.stats().truncated).toBe(false);
     fs.rmSync(primeDir, { recursive: true, force: true });
+  });
+});
+
+describe("the caps are ENFORCED, not merely applied on the way out", () => {
+  // This block exists because verify-branches-20260930 deleted all four eviction
+  // guards - the `while` loops at the metaCache, perEdgeLines and maxRecent sites
+  // and the `if` at idToKeyOrder - and all 99 tests still passed. Each cap test
+  // asserted on ix.snapshot(), which re-applies every cap at projection time, so
+  // the output was bounded whether or not the retained structure was.
+  //
+  // The production code is correct: the defaults are finite and the guards are
+  // present. What was missing is anyone standing behind the guards. In a codebase
+  // whose scarcest resource is memory, an unpoliced bound is a comment.
+
+  it("holds no more than the cap in the ring, however many messages arrive", async () => {
+    const dir = fixtureDir();
+    const p = writeSession(dir, LEAD_A, [header(LEAD_A), JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" })]);
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxRecent: 30, perEdgeLines: 3 });
+    let at = Date.parse("2026-09-30T10:00:00.000Z");
+    for (let i = 0; i < 600; i++) {
+      at += 1000;
+      fs.appendFileSync(p, `${msg("alpha", "beta", `m${i}`, new Date(at).toISOString(), `x${"y".repeat(300)} ${i}`)}\n`);
+      ix.resetCounters();
+      await ix.scan();
+    }
+    // Against the STRUCTURE. With maxRecent: 30 the old suite was happy holding
+    // 2 000 of them, because the projection sliced it back down for display.
+    expect(internals(ix).recentLength).toBeLessThanOrEqual(30);
+    expect(internals(ix).maxEdgeLines).toBeLessThanOrEqual(3);
+  });
+
+  it("keeps the per-file and per-session maps inside their caps", async () => {
+    const dir = fixtureDir();
+    // Many sessions, so metaCache and idToKeyOrder both have something to chew.
+    for (let i = 0; i < 12; i++) {
+      const sid = `00000000-0000-4000-8000-0000000000${(10 + i).toString().padStart(2, "0")}`;
+      writeSession(dir, sid, [header(sid), JSON.stringify({ type: "session_info", name: `s${i}`, timestamp: "2026-09-30T10:00:00.000Z" })]);
+    }
+    const ix = new CommsGraphIndexer({ primeDir: dir, minIntervalMs: 0, maxNodes: 4, maxFiles: 6 });
+    await ix.scan();
+    const held = internals(ix);
+    expect(held.metaCacheSize).toBeLessThanOrEqual(4);
+    expect(held.idToKeyOrderLength).toBeLessThanOrEqual(4);
+    expect(held.nodeCount).toBeLessThanOrEqual(4);
+  });
+
+  it("ships defaults that are finite and in a sane range", () => {
+    // Every cap test passes its own small values, so setting DEFAULTS to Infinity
+    // left the suite green - the shipped numbers, the ones that will actually run
+    // in production, were asserted by nothing at all. Read them off a real
+    // instance rather than importing the constant, so this fails if DEFAULTS is
+    // removed, renamed or loosened.
+    const ix = new CommsGraphIndexer({ primeDir: fixtureDir(), minIntervalMs: 0 });
+    const o = (ix as unknown as { opts: Record<string, number> }).opts;
+    for (const key of ["maxNodes", "maxEdges", "maxRecent", "perEdgeLines", "maxFiles", "maxBytesPerScan"]) {
+      expect(Number.isFinite(o[key]), `${key} must be finite, got ${o[key]}`).toBe(true);
+      expect(o[key], `${key} must be positive`).toBeGreaterThan(0);
+    }
+    // Bounds that are finite but useless are the other failure: a cap of 10^9 is
+    // technically bounded and practically a leak.
+    expect(o.maxNodes).toBeLessThanOrEqual(100_000);
+    expect(o.maxRecent).toBeLessThanOrEqual(100_000);
+    expect(o.perEdgeLines).toBeLessThanOrEqual(1_000);
+    expect(o.maxFiles).toBeLessThanOrEqual(100_000);
   });
 });
