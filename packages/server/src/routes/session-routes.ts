@@ -3,10 +3,11 @@
  */
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import type { ApiResponse } from "@blackbelt-technology/pi-dashboard-shared/types.js";
+import type { ApiResponse, DashboardSession } from "@blackbelt-technology/pi-dashboard-shared/types.js";
 import type { FastifyInstance } from "fastify";
 import { evaluateContainment } from "../access/containment-gate.js";
 import { readFileVerifiedUtf8, VerifiedReadRefused } from "../access/verified-read.js";
+import { canDiscloseAccessPosture } from "../auth/localhost-guard.js";
 import type { EventStore } from "../persistence/memory-event-store.js";
 import type { SessionManager } from "../session/memory-session-manager.js";
 import type { RemoteTranscriptStore } from "../session/remote-transcript-store.js";
@@ -15,9 +16,12 @@ import { decodeCursor, type SessionArchive } from "../session/session-archive.js
 import { buildSessionDiffCached, type SessionDiffResult, sessionDiffResultSize } from "../session/session-diff.js";
 import { SessionDiffCache } from "../session/session-diff-cache.js";
 import { resolveDiffSource } from "../session/session-diff-source.js";
-import { findSessionCustomEntry, findSessionToolCallPayload } from "../session/session-file-reader.js";
+import { findSessionCustomEntry, findSessionToolCallPayload, loadSessionEntries } from "../session/session-file-reader.js";
 import type { SessionLoadWorkerPool } from "../session/session-load-worker-pool.js";
 import { originOf } from "../session/session-origin.js";
+import { scanAllSessions } from "../session/session-scanner.js";
+import { directChildCounts, scanRlmSubagents } from "../session/rlm-subagent-scanner.js";
+import { resolveRlmArtifactsDir } from "@blackbelt-technology/pi-dashboard-shared/dashboard-paths.js";
 import type { NetworkGuard } from "./route-deps.js";
 
 export function registerSessionRoutes(
@@ -66,8 +70,59 @@ export function registerSessionRoutes(
     sizeOf: sessionDiffResultSize,
   });
 
-  fastify.get("/api/sessions", async () => {
-    const sessions = sessionManager.listAll();
+  // Merge live (in-memory) sessions with disk-scanned historical/archived
+  // sessions. Live entries from sessionManager.listAll() win on id collision;
+  // disk-only entries are appended. Newest-first by startedAt. Live sessions
+  // without an id (or whose file hasn't been resolved yet) are still included
+  // — never dropped on a missing `sessionFile` field.
+  // See change: surface-historical-sessions (workaround for the dashboard not
+  // exposing piSessionsDir history to the sidebar).
+  fastify.get("/api/sessions",
+  { preHandler: networkGuard }, async () => {
+    const liveSessions = sessionManager.listAll();
+    const scannedSessions = scanAllSessions().sessions;
+    const byId = new Map<string, DashboardSession>();
+    const orphans: DashboardSession[] = [];
+    for (const s of scannedSessions) {
+      if (s.id) byId.set(s.id, s);
+      else orphans.push(s);
+    }
+    for (const s of liveSessions) {
+      if (s.id) byId.set(s.id, s);
+      else orphans.push(s);
+    }
+
+    // prime-agent rlm CHILDREN. A child is an in-process sub-session of its
+    // parent's worker: it registers no bridge, so it is in neither `listAll()`
+    // nor `scanAllSessions()` (whose dir is a SIBLING of the artifacts tree its
+    // transcript lives in). It is discovered from disk instead, and carries
+    // `parentSessionId` so the client can nest it under its lead.
+    //
+    // Merge precedence is unchanged — a live/scanned row wins on id collision,
+    // so a child that ever DOES get a richer row elsewhere is not downgraded to
+    // the disk projection. `childCount` is stamped onto the parent afterwards,
+    // because it is a property of the relationship rather than of either row.
+    // See change: surface-rlm-subagent-children.
+    const artifactsDir = resolveRlmArtifactsDir();
+    if (artifactsDir) {
+      const { sessions: children } = scanRlmSubagents({ artifactsDir });
+      for (const child of children) {
+        if (!byId.has(child.id)) byId.set(child.id, child);
+      }
+      for (const [parentId, count] of directChildCounts(children)) {
+        const parent = byId.get(parentId);
+        // Only stamp a parent that is actually in this response. A parent the
+        // dashboard does not otherwise know about (its own transcript archived,
+        // or on another host) gets no phantom row. Note the parent may itself
+        // be a child — a child with its own children needs the badge too, which
+        // is why this is not restricted to top-level rows.
+        if (parent) parent.childCount = count;
+      }
+    }
+
+    const sessions = [...byId.values(), ...orphans].sort(
+      (a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0),
+    );
     return { success: true, data: sessions } satisfies ApiResponse;
   });
 
@@ -77,6 +132,7 @@ export function registerSessionRoutes(
   // archive-sessions-lazy-load.
   fastify.get<{ Querystring: { cwd?: string; limit?: string; cursor?: string; q?: string } }>(
     "/api/sessions/archived",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const startedMs = Date.now();
       const { cwd, limit, cursor, q } = request.query;
@@ -109,6 +165,7 @@ export function registerSessionRoutes(
 
   fastify.get<{ Params: { id: string } }>(
     "/api/sessions/archived/:id",
+    { preHandler: networkGuard },
     async (request, reply) => {
       const item = sessionArchive?.getById(request.params.id);
       if (!item) {
@@ -147,6 +204,7 @@ export function registerSessionRoutes(
 
   fastify.get<{ Params: { sessionId: string; seq: string } }>(
     "/api/events/:sessionId/:seq",
+    { preHandler: networkGuard },
     async (request) => {
       const { sessionId, seq } = request.params;
       const event = eventStore.getEvent(sessionId, parseInt(seq, 10));
@@ -167,13 +225,44 @@ export function registerSessionRoutes(
     { preHandler: networkGuard },
     async (request, reply) => {
       const { sessionId, toolCallId } = request.params;
+      // Fast path: in-memory event store (live bridge + recent events).
       const event = eventStore.findToolEndEvent(sessionId, toolCallId);
-      if (!event) {
-        reply.code(404);
-        return { error: "tool call still in flight or unknown" };
+      if (event) {
+        const data = (event.data ?? {}) as Record<string, unknown>;
+        return { result: data.result ?? "", isError: data.isError === true };
       }
-      const data = (event.data ?? {}) as Record<string, unknown>;
-      return { result: data.result ?? "", isError: data.isError === true };
+      // Fallback: read the on-disk JSONL. The in-memory store only carries
+      // events for sessions with a live bridge (and a bounded LRU of recent
+      // events); for every other session — including every ended session
+      // rehydrated from disk, and every session older than the LRU window —
+      // the JSONL transcript is the ONLY source of tool results. Without
+      // this, the client-side `useStaleToolReconcile` hook 404s forever on
+      // every historical tool call (the reducer marks them all 'running'
+      // because no in-memory end event exists), which the user sees as a
+      // permanent content-replay storm while reading the chat. See change:
+      // disk-fallback-for-tool-result-route.
+      const session = sessionManager.get(sessionId);
+      if (session?.sessionFile) {
+        const entries = loadSessionEntries(session.sessionFile);
+        for (const entry of entries) {
+          const msg = entry.message as
+            | { role?: string; toolCallId?: string; content?: unknown; isError?: boolean }
+            | undefined;
+          if (!msg || msg.role !== "toolResult" || msg.toolCallId !== toolCallId) continue;
+          const parts = Array.isArray(msg.content) ? msg.content : [];
+          const text = parts
+            .filter((p): p is { type?: string; text?: unknown } => !!p && typeof p === "object")
+            .map((p) => {
+              if (p.type === "text" && typeof p.text === "string") return p.text;
+              if (p.type === "image") return "[image]";
+              return "";
+            })
+            .join("");
+          return { result: text, isError: msg.isError === true };
+        }
+      }
+      reply.code(404);
+      return { error: "tool call still in flight or unknown" };
     },
   );
 
@@ -404,6 +493,7 @@ export function registerSessionRoutes(
         const sessionDecision = await evaluateContainment(absPath, [session.cwd], {
           site: "session-routes:session-file",
           hold: { request, reply },
+          disclosure: canDiscloseAccessPosture(request),
           session: sessionId,
         });
         if (!sessionDecision.allowed) {

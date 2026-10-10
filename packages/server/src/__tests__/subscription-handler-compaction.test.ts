@@ -241,7 +241,7 @@ describe("history_backfill — fully-superseded slice (E5)", () => {
   it("E5: an all-superseded slice delivers [] and still retreats the tail", async () => {
     const ctx = createMockContext({ maxReplayEvents: 500 });
     const overrides: Record<number, string> = {};
-    for (let s = 4051; s <= 4550; s++) overrides[s] = "message_update";
+    for (let s = 4351; s <= 4550; s++) overrides[s] = "message_update";
     for (let i = 1; i <= 5000; i++) ctx.eventStore.insertEvent("s1", makeEvent(overrides[i] ?? "tool_execution_end"));
     const subs = new Set<string>();
     handleSubscribe({ type: "subscribe", sessionId: "s1", lastSeq: 0 }, subs, ctx);
@@ -267,10 +267,10 @@ describe("history_backfill — fully-superseded slice (E5)", () => {
     expect(res.events).toEqual([]);
     // …but the credit is the SELECTED slice's lowest seq, not the request's
     // `from` and not the (empty) delivered set.
-    expect(res.servedFrom).toBe(4051);
-    expect(peekGapState(ctx.ws, "s1")!.tailMinSeq).toBe(4051);
+    expect(res.servedFrom).toBe(4351);
+    expect(peekGapState(ctx.ws, "s1")!.tailMinSeq).toBe(4351);
     // Strictly smaller than the announced gap: the walk advanced.
-    expect(res.remainingGapCount).toBe(4000);
+    expect(res.remainingGapCount).toBe(4300);
     expect(res.remainingGapCount).toBeLessThan(win.gapCount);
   });
 });

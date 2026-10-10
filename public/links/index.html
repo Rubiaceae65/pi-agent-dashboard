@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workshop links</title>
+<style>
+:root{color-scheme:light dark;
+ --surface:#fcfcfb; --plane:#f9f9f7; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+ --grid:#e1e0d9; --axis:#c3c2b7; --accent:#2a78d6; --good:#0ca30c; --warn:#fab219;
+ --crit:#d03b3b; --ring:rgba(11,11,11,.10);}
+@media (prefers-color-scheme:dark){:root{
+ --surface:#1a1a19; --plane:#0d0d0d; --ink:#fff; --ink2:#c3c2b7; --muted:#898781;
+ --grid:#2c2c2a; --axis:#383835; --accent:#3987e5; --good:#0ca30c; --warn:#fab219;
+ --crit:#d03b3b; --ring:rgba(255,255,255,.10);}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--plane);color:var(--ink);
+ font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--surface);
+ border-bottom:1px solid var(--grid);padding:10px 14px}
+h1{font-size:15px;margin:0 0 2px;font-weight:600}
+.sub{color:var(--muted);font-size:12px;margin-bottom:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,select,input{font:inherit;color:var(--ink);background:var(--surface);
+ border:1px solid var(--axis);border-radius:7px;padding:5px 9px}
+button{cursor:pointer}
+button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+input{min-width:190px}
+.grid{display:grid;gap:12px;padding:12px;
+ grid-template-columns:repeat(auto-fill,minmax(420px,1fr))}
+.card{background:var(--surface);border:1px solid var(--grid);border-radius:11px;
+ overflow:hidden;display:flex;flex-direction:column}
+.card.wide{grid-column:1/-1}
+.head{display:flex;gap:8px;align-items:baseline;padding:9px 11px;
+ border-bottom:1px solid var(--grid)}
+.name{font-weight:600;white-space:nowrap}
+.tag{font-size:11px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--axis);flex:0 0 auto;
+ align-self:center}
+.dot.up{background:var(--good)} .dot.down{background:var(--crit)}
+.url{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+ color:var(--muted);margin-left:auto;text-decoration:none;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis;max-width:46%}
+.url:hover{color:var(--accent)}
+.note{padding:8px 11px;color:var(--ink2);font-size:12.5px;border-bottom:1px solid var(--grid)}
+.tag.host{color:var(--ink2)}
+.frame{position:relative;height:88px;background:var(--plane);transition:height .12s}
+.card.loaded .frame{height:var(--h,420px)}
+iframe{width:100%;height:100%;border:0;display:block}
+.ph{position:absolute;inset:0;display:flex;flex-direction:column;gap:8px;
+ align-items:center;justify-content:center;text-align:center;padding:16px;color:var(--muted)}
+.ph code{background:var(--plane);border:1px solid var(--grid);border-radius:6px;
+ padding:3px 7px;font-size:11.5px;color:var(--ink2);display:inline-block;max-width:95%}
+.foot{padding:7px 11px;display:flex;gap:8px;align-items:center}
+.foot .tag{margin-left:auto}
+.hide{display:none}
+[hidden]{display:none}
+.refused{font-size:11.5px;color:var(--muted);align-self:center;
+ margin-right:auto;order:-1}
+h2.group{grid-column:1/-1;margin:6px 2px 0;font-size:12px;font-weight:600;
+ text-transform:uppercase;letter-spacing:.07em;color:var(--ink2);
+ border-bottom:1px solid var(--grid);padding-bottom:5px}
+h2.group:first-child{margin-top:0}
+</style></head>
+<body>
+<header>
+  <h1>Workshop links</h1>
+  <div class="sub">Every dev server, panel and viewer. The same service has a
+    different address from the host, from the Brain and from a phone, so pick
+    where you are and the links rebuild. Your choice is remembered.</div>
+  <div class="row">
+    <span class="tag">I am on:</span>
+    <button data-where="local">the machine itself</button>
+    <button data-where="lan">the host LAN</button>
+    <button data-where="tailscale">tailscale</button>
+    <button data-where="custom">custom</button>
+    <span class="tag">·</span>
+    <button data-kind="panel">panel</button><button data-kind="dashboard">dashboard</button><button data-kind="dev">dev server</button><button data-kind="api">API</button><button data-kind="service">service</button><button data-kind="viewer">viewer</button>
+    <span class="tag">·</span>
+    <label class="tag">frame height <input id="height" type="number" min="200"
+      max="1200" step="20" style="min-width:90px"></label>
+    <button id="reload">Re-check</button>
+    <button id="loadall">Load all frames</button>
+  </div>
+  <div id="customwrap" class="row hide" style="margin-top:8px"><label class="tag">Workshop host (Brain1 - not part of the dev system) <input data-host="host" placeholder="address or hostname"></label><label class="tag">Brain1 (atelier-brain) - not part of the dev system <input data-host="brain" placeholder="address or hostname"></label><label class="tag">Talos cluster <input data-host="cluster" placeholder="address or hostname"></label><label class="tag">House network <input data-host="house" placeholder="address or hostname"></label><label class="tag">Outside <input data-host="external" placeholder="address or hostname"></label><label class="tag">Brain2 (atelier-brain2) <input data-host="brain2" placeholder="100.65.131.102"></label><label class="tag">mail-dev-worker sandbox <input data-host="mail" placeholder="address or hostname"></label></div>
+</header>
+<main id="grid" class="grid"></main>
+<script>
+const DATA = {"hosts": {"host": {"label": "Workshop host (Brain1 - not part of the dev system)", "local": "127.0.0.1", "lan": "", "tailscale": "", "note": "The machine running Incus, the panel and the tailnet. `make panel` and `make shell` are run here. Not part of the dev system (DEV-SYSTEM.md). Kept so the old addresses are not mistaken for live ones."}, "brain": {"label": "Brain1 (atelier-brain) - not part of the dev system", "local": "127.0.0.1", "lan": "10.99.227.30", "tailscale": "", "note": "The orchestrator container. Reachable from the host on its bridge address; not on the tailnet itself. Not part of the dev system (DEV-SYSTEM.md). Kept so the old addresses are not mistaken for live ones."}, "cluster": {"label": "Talos cluster", "local": "", "lan": "", "tailscale": "", "note": "Nothing is deployed yet. These entries are here so the page is ready when it is. Not part of the dev system either; the entries stay marked not-deployed until something is actually deployed."}, "house": {"label": "House network", "local": "", "lan": "", "tailscale": "", "note": "Machines that are not the workshop: Home Assistant and anything else on the house LAN. Not reachable from the Brain (its 8123 is refused), so this address has to be filled in."}, "external": {"label": "Outside", "local": "", "lan": "", "tailscale": "", "note": "Accounts on the public internet. Fixed URLs, nothing to switch."}, "brain2": {"label": "Brain2 (atelier-brain2)", "local": "127.0.0.1", "lan": "10.99.227.60", "tailscale": "100.65.131.102", "note": "The ONE development system (DEV-SYSTEM.md): one instance of each component, every lead develops against these and deploys into them. The orchestrator container, and the only node on the tailnet. The dev-system UIs are published onto its tailnet address by atelier phase 61 (`BRAIN_TAILNET_SERVE`)."}, "mail": {"label": "mail-dev-worker sandbox", "local": "", "lan": "10.99.227.242", "tailscale": "", "note": "The mail system's sandbox (Odoo 18 + ow_mail + mail_jev). Its address is the sandbox's own, NOT a tailnet URL: `100.65.131.102:8069` is refused. Publishing it is mail-system-20260929's TODO for atelier phase 61."}}, "services": [{"id": "panel", "label": "Atelier control panel", "project": "atelier", "host": "host", "port": 8100, "path": "/", "kind": "panel", "frame": true, "start": "make panel   # on the host", "note": "Sessions, transcripts and VNC seats. The main door into a running workshop.", "kindLabel": "panel", "devSystem": false}, {"id": "brain-seat", "label": "Brain desktop (wayvnc)", "project": "atelier", "host": "brain", "port": 5900, "path": "", "kind": "viewer", "frame": false, "scheme": "vnc", "start": "runs already - wayvnc on the Brain's Wayland seat", "note": "The graphical seat GUI apps appear on. A VNC viewer, not a web page: vnc://10.99.227.30:5900 or through the panel's seat list.", "kindLabel": "viewer", "devSystem": false}, {"id": "ola", "label": "OLA - lighting control", "project": "handtouch-poles", "host": "brain", "port": 9090, "path": "/ola.html", "kind": "panel", "frame": true, "start": "olad   # running now", "note": "Open Lighting Architecture web UI. DMX universes and patching - the desk side of the lighting work. /mobile.html is the phone layout.", "kindLabel": "panel", "devSystem": false}, {"id": "llm-queue-8092", "label": "LLM queue (qwen lane)", "project": "local-llm-stack", "host": "brain", "port": 8092, "path": "/llm-queue/stats", "kind": "api", "frame": true, "start": "llm-queue-8092.service   # running now", "note": "The lane models.json actually points at. :8090 is a second, older instance - prefer this one.", "kindLabel": "API", "devSystem": false}, {"id": "llm-queue-8090", "label": "LLM queue (older instance)", "project": "local-llm-stack", "host": "brain", "port": 8090, "path": "/llm-queue/stats", "kind": "api", "frame": true, "start": "llm-queue.service   # running now", "note": "Collapses above 4 concurrent qwen sessions. Kept listed so it is never mistaken for :8092.", "kindLabel": "API", "devSystem": false}, {"id": "dash", "label": "workshop-dash", "project": "workshop-dash", "host": "brain", "port": 8770, "path": "/", "kind": "dashboard", "frame": true, "start": "python3 -m server.app   # in /projects/workshop-dash", "note": "Commit stream, plan headroom, lane attribution. Has never been looked at in a browser - opening it is item 4 on the plan.", "kindLabel": "dashboard", "devSystem": false}, {"id": "dash-hook", "label": "workshop-dash webhook", "project": "workshop-dash", "host": "brain", "port": 8771, "path": "/hook", "kind": "api", "frame": false, "start": "python3 -m github.webhook   # in /projects/workshop-dash", "note": "POST only - GitHub delivery receiver. Nothing to look at in a browser.", "kindLabel": "API", "devSystem": false}, {"id": "planner-api", "label": "planner", "project": "planner", "host": "brain", "port": 8766, "path": "/", "kind": "api", "frame": true, "start": "planner serve   # in /projects/planner", "note": "What the Home Assistant integration points at by default.", "kindLabel": "API", "devSystem": false}, {"id": "home-assistant", "label": "Home Assistant", "project": "planner", "host": "house", "port": 8123, "path": "/", "kind": "panel", "frame": true, "start": "runs on the house network - not started from here", "note": "The planner's human surface and its human-state input: a conversation agent (Assist), a todo list, notifications, and Health Connect sensors read through the Android companion app. The footswitch also talks to it over WiFi. Runs on the house network, not on the workshop host.", "kindLabel": "panel", "devSystem": false}, {"id": "mona-web", "label": "sysml-mona frontend", "project": "sysml-mona", "host": "brain", "port": 5173, "path": "/", "kind": "dev", "frame": true, "start": "pnpm dev   # in /projects/sysml-mona", "note": "Vite dev server. Proxies /api and /ws to the backend on :4000.", "kindLabel": "dev server", "devSystem": false}, {"id": "mona-api", "label": "sysml-mona backend", "project": "sysml-mona", "host": "brain", "port": 4000, "path": "/", "kind": "api", "frame": false, "start": "pnpm dev:backend   # in /projects/sysml-mona", "note": "MONA_BACKEND_URL. Also the LiteLLM base URL in some configs - check which is which before assuming.", "kindLabel": "API", "devSystem": false}, {"id": "flexo", "label": "OpenMBEE Flexo (MMS)", "project": "sysml-mona", "host": "brain", "port": 18080, "path": "/orgs/sysmlv2", "kind": "service", "frame": true, "start": "docker compose up   # the flexo stack", "note": "MMS_BASE_URL. `curl /orgs/sysmlv2` should not 404 - that is the readiness check.", "kindLabel": "service", "devSystem": false}, {"id": "fuseki", "label": "Fuseki (quadstore UI)", "project": "sysml-mona", "host": "brain", "port": 3030, "path": "/", "kind": "panel", "frame": true, "start": "part of the flexo stack", "note": "SPARQL against the quadstore. Direct TDB2 access is on :13030/ds.", "kindLabel": "panel", "devSystem": false}, {"id": "printfarm-web", "label": "3dprintfarm web", "project": "3dprintfarm", "host": "brain", "port": 3000, "path": "/", "kind": "dev", "frame": true, "start": "npm run dev   # in /projects/3dprintfarm/web", "note": "The landing, quote flow and upload journey.", "kindLabel": "dev server", "devSystem": false}, {"id": "printfarm-api", "label": "3dprintfarm quote API", "project": "3dprintfarm", "host": "brain", "port": 8000, "path": "/quote/estimate", "kind": "api", "frame": false, "start": "uvicorn   # in /projects/3dprintfarm", "note": "Same-origin behind the web app in production; CORS-allowed from :3000 in dev.", "kindLabel": "API", "devSystem": false}, {"id": "findbook-api", "label": "findbook API", "project": "findbook", "host": "brain", "port": 8000, "path": "/health", "kind": "api", "frame": true, "start": "python findbook_api.py --port 8000   # in /projects/findbook", "note": "Shares :8000 with the printfarm API - run one at a time, or move one.", "kindLabel": "API", "devSystem": false}, {"id": "amt", "label": "allhostmng AMT/MPS", "project": "allhostmng", "host": "host", "port": 9100, "path": "/health", "kind": "service", "frame": false, "start": "docker compose up   # in /projects/allhostmng", "note": "Intel AMT power control for the fleet.", "kindLabel": "service", "devSystem": false}, {"id": "bootserver", "label": "allhostmng boot server", "project": "allhostmng", "host": "host", "port": 8080, "path": "/", "kind": "service", "frame": true, "start": "docker compose up   # in /projects/allhostmng", "note": "What a machine PXE-boots against.", "kindLabel": "service", "devSystem": false}, {"id": "gitea", "label": "Gitea", "project": "flux-platform", "host": "cluster", "port": 443, "path": "/", "kind": "panel", "frame": true, "scheme": "https", "fixed": "https://git.testcloud.mooka.nl", "start": "not deployed - flux-platform/apps/base/gitea", "note": "The cluster's git. Its mirror app is what fills the agentmirrors org. Resolves on the tailnet at 100.64.121.16.", "kindLabel": "panel", "devSystem": false}, {"id": "harbor", "label": "Harbor registry", "project": "flux-platform", "host": "cluster", "port": 443, "path": "/", "kind": "panel", "frame": true, "scheme": "https", "start": "not deployed - flux-platform/apps/base/harbor", "note": "Where built images would live. Needs a domain.", "kindLabel": "panel", "devSystem": false}, {"id": "authentik", "label": "Authentik", "project": "flux-platform", "host": "cluster", "port": 443, "path": "/", "kind": "panel", "frame": true, "scheme": "https", "start": "not deployed - flux-platform/apps/base/authentik", "note": "Identity. Comes before the first useful workload, not after.", "kindLabel": "panel", "devSystem": false}, {"id": "openobserve", "label": "OpenObserve", "project": "flux-foundation", "host": "cluster", "port": 443, "path": "/", "kind": "panel", "frame": true, "scheme": "https", "start": "not deployed - flux-foundation/apps/base/openobserve", "note": "Logs and metrics for the cluster.", "kindLabel": "panel", "devSystem": false}, {"id": "dash-prime", "label": "Prime dashboard", "project": "atelier", "host": "brain2", "port": 8000, "path": "/", "kind": "dashboard", "frame": true, "dev_system": true, "start": "runs already - the Brain's own prime dashboard (atelier-prime-dashboard.service)", "note": "The door into every lead and child session: prompts, transcripts, flow control. This is also where this page is served, at /links/.", "kindLabel": "dashboard", "devSystem": true}, {"id": "dash-mobile", "label": "Phone dashboard (/mobile/)", "project": "atelier", "host": "brain2", "port": 8000, "path": "/mobile/", "kind": "panel", "frame": true, "dev_system": true, "start": "runs already - served by the same dashboard process", "note": "The phone layout of the same sessions, for the owner on the handset. Added by lead dash-guard-20260929 (route guard) and deployed by atelier phase 62.", "kindLabel": "panel", "devSystem": true}, {"id": "axiomat", "label": "Axiomat (sysml-mona)", "project": "sysml-mona", "host": "brain2", "port": 9544, "path": "/", "kind": "panel", "frame": true, "dev_system": true, "start": "sysml-mona deploy/sandbox/ via dev/up.sh - runs already in axiomat-20260928-1753-worker", "note": "The one Axiomat, the SysML v2 modelling service. Sandbox address 10.99.227.115:9544; the tailnet forward is phase 61's. Liveness: http://100.65.131.102:9544/api/health returns {\"status\":\"ok\"}.", "kindLabel": "panel", "devSystem": true}, {"id": "dev-ha", "label": "dev Home Assistant", "project": "planner", "host": "brain2", "port": 8123, "path": "/", "kind": "panel", "frame": false, "dev_system": true, "start": "planner deploy/dev-sandbox/ via dev/up.sh - docker container dev-ha in devint-20260929-0925-worker", "note": "The development Home Assistant, ONE instance, that the planner's HomeAssistantAdapter writes calendar.planner / todo.planner into. NOT the owner's house Home Assistant, which is the separate 'Home Assistant' card below on the house network - do not confuse the two. frame:false because Home Assistant sends X-Frame-Options: SAMEORIGIN (measured 2026-09-29, `curl -sI http://100.65.131.102:8123/`), so an iframe of it can only ever show a refusal.", "kindLabel": "panel", "devSystem": true}, {"id": "planner-web", "label": "planner web view", "project": "planner", "host": "brain2", "port": 8765, "path": "/", "kind": "panel", "frame": true, "dev_system": true, "start": "planner deploy/ via dev/up.sh - runs already in devint-20260929-0925-worker", "note": "The human surface of the planner: what it decided and why. This supersedes the Brain1 'planner' API card (:8766) for all dev work; that one is Brain1's and is not part of the dev system. No X-Frame-Options and no CSP frame-ancestors on :8765 (measured 2026-09-29), so it can be framed.", "kindLabel": "panel", "devSystem": true}, {"id": "ow-mail", "label": "OW Mail (mail system)", "project": "mail-jev", "host": "mail", "port": 8069, "path": "/web/login", "kind": "panel", "frame": false, "dev_system": true, "start": "mail-jev deploy/ (docker compose: postgres, dovecot, odoo, jevshim) - runs already in mail-dev-worker", "note": "Odoo 18 with ow_mail and mail_jev: the mail system the leads use to talk to the owner. Login admin/admin. NOT yet on the tailnet - `100.65.131.102:8069` is refused, so this card carries the sandbox's own address (10.99.227.242) until atelier phase 61 publishes it (mail-system-20260929's TODO). frame:false because Odoo sends X-Frame-Options: SAMEORIGIN and Content-Security-Policy: frame-ancestors 'self'.", "kindLabel": "panel", "devSystem": true}, {"id": "github", "label": "GitHub console", "project": "external", "host": "external", "port": 443, "path": "/", "kind": "panel", "frame": false, "scheme": "https", "fixed": "https://github.com/settings/tokens", "start": "an account, not a service you start", "note": "Where every repository lives, and the only off-machine copy of most of the work. Also runs the CI that atelier-ci installs. The source of truth Flux would pull from, and where the cluster's Gitea mirrors to.", "kindLabel": "panel", "devSystem": false}, {"id": "tailscale", "label": "Tailscale console", "project": "external", "host": "external", "port": 443, "path": "/", "kind": "panel", "frame": false, "scheme": "https", "fixed": "https://login.tailscale.com/admin/machines", "start": "an account, not a service you start", "note": "The tailnet. How the owner reaches the workshop from a phone or another machine, and how sandboxes join the owner's network. Already in the preflux base layer alongside Gateway API and cfgate. The cluster is expected to be on the tailnet from the first boot.", "kindLabel": "panel", "devSystem": false}, {"id": "cloudflare", "label": "Cloudflare console", "project": "external", "host": "external", "port": 443, "path": "/", "kind": "panel", "frame": false, "scheme": "https", "fixed": "https://dash.cloudflare.com", "start": "an account, not a service you start", "note": "DNS, and the tunnel/gateway in front of anything published. This is the DNS provider credential that external-dns and cert-manager block on. It already exists and is already encrypted - the domain work is less green-field than it looked.", "kindLabel": "panel", "devSystem": false}, {"id": "openprovider", "label": "Openprovider console", "project": "external", "host": "external", "port": 443, "path": "/", "kind": "panel", "frame": false, "scheme": "https", "fixed": "https://cp.openprovider.eu", "start": "an account, not a service you start", "note": "Domain registrar - where the names are actually bought and renewed. The step before Cloudflare: a zone has to be registered and delegated before DNS or certificates mean anything. Restriction is by IP, not by permission - whitelisting is set per user and per access level (API or control panel), IPv4 and IPv6, so the credential is only as narrow as the egress it is allowed from.", "kindLabel": "panel", "devSystem": false}, {"id": "migadu", "label": "Migadu console", "project": "external", "host": "external", "port": 443, "path": "/", "kind": "panel", "frame": false, "scheme": "https", "fixed": "https://admin.migadu.com", "start": "an account, not a service you start", "note": "Mail hosting for the domains. MX, SPF, DKIM and DMARC records live in the same zone the cluster wants for ingress, so mail and ingress DNS are one piece of work, not two.", "kindLabel": "panel", "devSystem": false}, {"id": "anthropic", "label": "Anthropic console", "project": "external", "host": "external", "port": 443, "path": "/", "kind": "panel", "frame": false, "scheme": "https", "fixed": "https://console.anthropic.com", "start": "an account, not a service you start", "note": "The Claude lane - this session, and the claude driver in atelier-run. None - an agent-time dependency, not a deployed one.", "kindLabel": "panel", "devSystem": false}, {"id": "minimax", "label": "MiniMax console", "project": "external", "host": "external", "port": 443, "path": "/", "kind": "panel", "frame": false, "scheme": "https", "fixed": "https://platform.minimax.io", "start": "an account, not a service you start", "note": "The MiniMax M2.7 lane, which is what opencode and pi drivers use by default. None - agent-time.", "kindLabel": "panel", "devSystem": false}]};
+const state = {
+  // tailscale, not local: the dev system is published on the Brain's tailnet
+  // node, and 127.0.0.1 answers nothing from a phone or from the host. A reader
+  // who wants the old behaviour picks "the machine itself" and it is remembered.
+  where: localStorage.getItem('wm.where') || 'tailscale',
+  custom: JSON.parse(localStorage.getItem('wm.custom') || '{}'),
+  kinds: new Set(JSON.parse(localStorage.getItem('wm.kinds') || '["panel","dashboard","dev","api","service","viewer"]')),
+  height: +(localStorage.getItem('wm.height') || 420),
+};
+const save = () => {
+  localStorage.setItem('wm.where', state.where);
+  localStorage.setItem('wm.custom', JSON.stringify(state.custom));
+  localStorage.setItem('wm.kinds', JSON.stringify([...state.kinds]));
+  localStorage.setItem('wm.height', state.height);
+};
+function addrFor(hostId){
+  const h = DATA.hosts[hostId] || {};
+  const c = state.custom[hostId];
+  // A host with no address in the chosen set falls back to the next one it
+  // does have, rather than showing "no address for this host" for a service
+  // that plainly has one. The card's tag says which address was used, so the
+  // fallback is visible rather than silent.
+  if (state.where === 'custom') return c || '';
+  if (state.where === 'tailscale') return c || h.tailscale || h.lan || '';
+  if (state.where === 'lan') return h.lan || c || h.tailscale || '';
+  return h.local || h.lan || '';
+}
+function urlFor(s){
+  if (s.fixed) return s.fixed + (s.path && s.path !== '/' ? s.path : '');
+  const a = addrFor(s.host);
+  if (!a) return '';
+  const scheme = s.scheme || 'http';
+  if (scheme === 'vnc') return `vnc://${a}:${s.port}`;
+  const port = (scheme === 'https' && s.port === 443) ? '' : ':' + s.port;
+  return `${scheme}://${a}${port}${s.path || ''}`;
+}
+function probe(s, card){
+  const url = urlFor(s), dot = card.querySelector('.dot');
+  if (!url || (s.scheme === 'vnc')) return;
+  dot.className = 'dot';
+  // An opaque response still proves something answered on that port.
+  fetch(url, {mode:'no-cors', cache:'no-store', signal: AbortSignal.timeout(4000)})
+    .then(() => { dot.classList.add('up'); dot.title = 'answered'; })
+    .catch(() => { dot.classList.add('down'); dot.title = 'no answer'; });
+}
+function render(){
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  const seen = new Set(); let lastDev = null;
+  const groupHeading = (g) => {
+    const h = document.createElement('h2');
+    h.className = 'group';
+    h.textContent = g === 'dev'
+      ? 'The dev system - one instance of each, on brain2 (DEV-SYSTEM.md)'
+      : 'The rest of the workshop (not part of the dev system)';
+    return h;
+  };
+  const order = Object.keys(DATA.hosts);
+  // The dev system first, in its own group: those are the UIs the whole Brain
+  // develops against (DEV-SYSTEM.md). Everything else is the older workshop,
+  // still listed so a stale address is never mistaken for a live one.
+  const dev = DATA.services.filter(s => s.devSystem);
+  const rest = DATA.services.filter(s => !s.devSystem).sort((a,b) =>
+    order.indexOf(a.host) - order.indexOf(b.host) ||
+    a.project.localeCompare(b.project) || a.label.localeCompare(b.label));
+  for (const s of [...dev, ...rest]){
+    if (!state.kinds.has(s.kind)) continue;
+    const url = urlFor(s);
+    // Which address set produced this URL. A host with no tailscale address
+    // (the mail sandbox, not published yet) falls back to its LAN address, and
+    // the card says so - otherwise a reader cannot tell a tailnet URL from a
+    // bridge one.
+    const used = s.fixed ? 'fixed'
+      : addrFor(s.host) === (DATA.hosts[s.host].tailscale || '') ? 'tailscale'
+      : addrFor(s.host) === (DATA.hosts[s.host].lan || '') ? 'LAN'
+      : 'local';
+    const card = document.createElement('section');
+    card.className = 'card';
+    card.style.setProperty('--h', state.height + 'px');
+    card.innerHTML = `
+      <div class="head"><span class="dot"></span>
+        <span class="name">${s.label}</span>
+        <span class="tag">${s.project} · ${s.kindLabel} · <span class="host">${DATA.hosts[s.host].label}</span>${s.fixed || s.scheme === 'vnc' ? '' : ` · <span class="host">${used}</span>`}</span>
+        <a class="url" target="_blank" rel="noreferrer" href="${url || '#'}">${url || 'no address for this host'}</a>
+      </div>
+      ${s.note ? `<div class="note">${s.note}</div>` : ''}
+      <div class="frame"></div>
+      <div class="foot">
+        <button class="load">${s.frame ? 'Load frame' : 'Open in a tab'}</button>
+        <button class="open"${s.frame ? '' : ' hidden'}>Open in a tab</button>
+        <button class="copy">Copy URL</button>
+      </div>`;
+    const frame = card.querySelector('.frame');
+    const ph = document.createElement('div');
+    ph.className = 'ph';
+    ph.innerHTML = s.frame
+      ? `<div>not loaded</div><code>${s.start || ''}</code>`
+      : `<div>${s.kind === 'api' ? 'An API, not a page' : 'Opens outside the browser'}</div><code>${s.start || ''}</code>`;
+    frame.appendChild(ph);
+    const load = () => {
+      if (!url) return;
+      if (!s.frame) { window.open(url, '_blank', 'noreferrer'); return; }
+      frame.innerHTML = `<iframe src="${url}" loading="lazy"
+        referrerpolicy="no-referrer"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`;
+      // A service that sends X-Frame-Options, or a page under a CSP with
+      // frame-ancestors, refuses the frame silently: the iframe fires `load`
+      // and shows nothing. There is NO reliable in-page signal for that -
+      // measured, not assumed: a cross-origin frame reports
+      // `contentDocument === null` and `contentWindow.length === 0` whether it
+      // rendered or was refused (tools/frame-signal.py, 3 URLs, all identical),
+      // so a browser-side guess would be a claim. The answer comes from the
+      // RESPONSE HEADERS at build time instead: `make check-links` RULE 4
+      // refuses a `frame: true` card whose service sends X-Frame-Options or an
+      // enforcing frame-ancestors. Here we only nudge, without claiming a cause.
+      const f = frame.querySelector('iframe');
+      f.addEventListener('load', () => {
+        if (card.querySelector('.refused')) return;
+        const hint = document.createElement('div');
+        hint.className = 'refused';
+        hint.innerHTML = 'Nothing rendered? This panel may refuse to be ' +
+          'embedded &mdash; use <b>Open in a tab</b>.';
+        card.querySelector('.foot').prepend(hint);
+      }, {once: true});
+      card.classList.add('loaded');
+      card.querySelector('.load').textContent = 'Reload';
+    };
+    card.dataset.frameable = s.frame ? '1' : '';
+    card.load = load;
+    card.querySelector('.load').onclick = load;
+    const open = card.querySelector('.open');
+    if (open) open.onclick = () => { if (url) window.open(url, '_blank', 'noreferrer'); };
+    card.querySelector('.copy').onclick = async () => {
+      try { await navigator.clipboard.writeText(url); } catch (e) {}
+    };
+    // The heading goes BEFORE the first card of its group, or it lands under
+    // the card it introduces.
+    // insertBefore(firstChild) for BOTH groups would stack them in reverse,
+    // so the second heading lands above the first. Only the very first group
+    // goes to the top; every later one is appended in document order.
+    const group = s.devSystem ? 'dev' : 'rest';
+    if (!seen.has(group)) {
+      seen.add(group);
+      grid.insertBefore(groupHeading(group), seen.size === 1 ? grid.firstChild : null);
+    }
+    grid.appendChild(card);
+    probe(s, card);
+    lastDev = s.devSystem;
+  }
+  document.querySelectorAll('[data-where]').forEach(b =>
+    b.classList.toggle('on', b.dataset.where === state.where));
+  document.querySelectorAll('[data-kind]').forEach(b =>
+    b.classList.toggle('on', state.kinds.has(b.dataset.kind)));
+  const box = document.getElementById('customwrap');
+  box.className = (state.where === 'custom' || state.where === 'tailscale') ? 'row' : 'row hide';
+}
+function boot(){
+  document.querySelectorAll('[data-where]').forEach(b => b.onclick = () => {
+    state.where = b.dataset.where; save(); render();
+  });
+  document.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => {
+    const k = b.dataset.kind;
+    state.kinds.has(k) ? state.kinds.delete(k) : state.kinds.add(k);
+    save(); render();
+  });
+  document.querySelectorAll('[data-host]').forEach(inp => {
+    inp.value = state.custom[inp.dataset.host] || '';
+    inp.oninput = () => { state.custom[inp.dataset.host] = inp.value.trim(); save(); render(); };
+  });
+  const h = document.getElementById('height');
+  h.value = state.height;
+  h.oninput = () => { state.height = +h.value; save(); render(); };
+  document.getElementById('reload').onclick = () => render();
+  document.getElementById('loadall').onclick = () => {
+    document.querySelectorAll('.card').forEach(c => {
+      if (c.dataset.frameable && c.load) c.load();
+    });
+  };
+  render();
+}
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body></html>

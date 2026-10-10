@@ -26,8 +26,15 @@ interface Props {
  * See change: linkify-tool-output (spec: tool-output-linkification).
  */
 function LinkifiedTextInner({ text, context }: Props) {
-  const tokens = useMemo(() => tokenize(text), [text]);
-  if (!text) return null;
+  // Lone-surrogate guard. The tokenizer splits on regex boundaries and
+  // emits plain-text fragments which React then commits as text children.
+  // A lone surrogate survives JSON round-tripping into JS strings but
+  // trips Firefox's DOM string APIs (and some rehype internals); we
+  // normalise once up-front so every consumer downstream sees a
+  // well-formed string. See change: sanitize-lone-surrogates-before-markdown-render.
+  const safeText = useMemo(() => (typeof text === "string" ? text.toWellFormed() : text), [text]);
+  const tokens = useMemo(() => tokenize(safeText), [safeText]);
+  if (!safeText) return null;
   return (
     <>
       {tokens.map((tok, i) => {

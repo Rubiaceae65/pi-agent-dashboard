@@ -17,6 +17,7 @@ import type { EventStore } from "../persistence/memory-event-store.js";
 import type { PreferencesStore } from "../persistence/preferences-store.js";
 import type { PiGateway } from "../pi/pi-gateway.js";
 import type { SessionManager } from "../session/memory-session-manager.js";
+import { withRlmChildrenInSnapshot } from "../session/rlm-subagent-snapshot.js";
 import type { SessionOrderManager } from "../session/session-order-manager.js";
 // PendingLoadManager removed — server loads sessions directly via DirectoryService
 import { createHeadlessPidRegistry, type HeadlessPidRegistry } from "../spawn-process/headless-pid-registry.js";
@@ -94,6 +95,8 @@ export function frameClassOf(
     case "pinned_dirs_updated":
     case "workspaces_updated":
     case "collapsed_folders_updated":
+    case "group_by_prefs_updated":
+    case "card_sections_updated":
     case "favorite_models_updated":
     case "display_prefs_updated":
     case "reachability_updated":
@@ -123,6 +126,10 @@ export function frameClassOf(
     case "grant_request":
     case "grant_dismiss":
       return { cls: "state", key: `grant:${msg.promptId}` };
+    // Content-free pairing hint: coalescing state, never shed — a shed hint is
+    // an approval dialog that never appears. See change: add-pairing-approval-dialog.
+    case "pair_pending_changed":
+      return { cls: "state", key: "pair_pending" };
     case "terminal_added":
       return { cls: "state", key: `terminal:${msg.terminal.id}` };
     case "terminal_updated":
@@ -136,7 +143,7 @@ export function frameClassOf(
 import { randomUUID } from "node:crypto";
 import type { UpgradeHeaders } from "../access/capability-issuance.js";
 import { issuePromptChannel, releasePromptChannel } from "../access/prompt-channel.js";
-import { handleAddFolderToWorkspace, handleCreateWorkspace, handleDeleteWorkspace, handleExtensionUiResponse, handleFavoriteModel, handleMoveFolderToWorkspace, handleOpenSpecBulkArchive, handleOpenSpecGet, handleOpenSpecRefresh, handlePiGatewayForward, handlePinDirectory, handleRemoveFolderFromWorkspace, handleRenameWorkspace, handleReorderPinnedDirs, handleReorderSessions, handleReorderWorkspaceFolders, handleReorderWorkspaces, handleSetFolderCollapsed, handleSetWorkspaceCollapsed, handleUnfavoriteModel, handleUnpinDirectory } from "../browser-handlers/directory-handler.js";
+import { handleAddFolderToWorkspace, handleCreateWorkspace, handleDeleteWorkspace, handleExtensionUiResponse, handleFavoriteModel, handleMoveFolderToWorkspace, handleOpenSpecBulkArchive, handleOpenSpecGet, handleOpenSpecRefresh, handlePiGatewayForward, handlePinDirectory, handleRemoveFolderFromWorkspace, handleRenameWorkspace, handleReorderPinnedDirs, handleReorderSessions, handleReorderWorkspaceFolders, handleReorderWorkspaces, handleResetFolderCardSections, handleSetCardSectionVisibility, handleSetDefaultGroupBy, handleSetFolderCollapsed, handleSetFolderGroupBy, handleSetLaneCollapsed, handleSetWorkspaceCollapsed, handleUnfavoriteModel, handleUnpinDirectory } from "../browser-handlers/directory-handler.js";
 import type { BrowserHandlerContext } from "../browser-handlers/handler-context.js";
 import { handleAbort, handleClearFollowupEntries, handleEditFollowupEntry, handleFlowControl, handleForceKill, handleKillProcess, handlePromoteFollowupEntry, handlePromptResyncRequest, handleRemoveFollowupEntry, handleResumeSession, handleRetrySession, handleSendPrompt, handleShutdown, handleSpawnSession, handleStopAfterTurn, handleSubagentResyncRequest, shutdownSession as shutdownSessionImpl } from "../browser-handlers/session-action-handler.js";
 import { handleAcceptReplaceProposal, handleArchiveSession, handleAttachProposal, handleDetachProposal, handleDismissReplaceProposal, handleFetchContent, handleListSessions, handleRemoveTagGlobally, handleRenameSession, handleSessionsPage, handleSetSessionDisplayPrefs, handleSetSessionProcessDrawer, handleSetSessionTags, handleUnarchiveSession } from "../browser-handlers/session-meta-handler.js";
@@ -1428,6 +1435,20 @@ export function createBrowserGateway(
           collapsedFolders: preferencesStore.getCollapsedFolders(),
         });
       }
+      // Card-section visibility precedes `sessions_snapshot` so cards never
+      // mount with a section that is hidden one frame later. Sent
+      // UNCONDITIONALLY (incl. `{}`), like `collapsed_folders_updated`: a
+      // reconnecting browser must drop state reset while it was offline.
+      // See change: configurable-session-card-sections.
+      if (typeof preferencesStore.getCardSections === "function") {
+        sendTo(ws, { type: "card_sections_updated", cardSections: preferencesStore.getCardSections() });
+      }
+      // Grouping prefs right after collapsed folders, before any folder-group
+      // materializing message, so lanes render on first paint (no flat→lanes
+      // flash). See change: session-list-group-by.
+      if (typeof preferencesStore.getGroupByPrefs === "function") {
+        sendTo(ws, { type: "group_by_prefs_updated", ...preferencesStore.getGroupByPrefs() });
+      }
       sendTo(ws, { type: "pinned_dirs_updated", paths: preferencesStore.getPinnedDirectories() });
       // Send favorite models snapshot on connect. Guarded with `typeof` so
       // old PreferencesStore stubs in tests don't crash.
@@ -1525,9 +1546,16 @@ export function createBrowserGateway(
       const snapshot = typeof sessionManager.buildSnapshot === "function"
         ? sessionManager.buildSnapshot(pinnedDirs)
         : { sessions: sessionManager.listAll(), orders: {} as Record<string, string[]>, endedTotals: {} as Record<string, number> };
+      // prime-agent rlm children are NOT registered with the session manager —
+      // they are in-process sub-sessions that never send `session_register` — so
+      // `buildSnapshot()` cannot know about them. The client REPLACES its whole
+      // session Map on this frame, so a child missing here is a child the
+      // dashboard never shows, even though `GET /api/sessions` lists it. Merge
+      // them in with the same precedence as the REST route.
+      // See change: surface-rlm-subagent-children.
       sendTo(ws, {
         type: "sessions_snapshot",
-        ...snapshot,
+        ...withRlmChildrenInSnapshot(snapshot),
         // Archived counts come from the index, not the (non-resident) sessions.
         // See change: archive-sessions-lazy-load.
         archivedCountByCwd: sessionArchive?.countsByKey() ?? {},
@@ -1775,6 +1803,21 @@ export function createBrowserGateway(
             break;
           case "set_folder_collapsed":
             handleSetFolderCollapsed(msg, ctx);
+            break;
+          case "set_card_section_visibility":
+            handleSetCardSectionVisibility(msg, ctx);
+            break;
+          case "reset_folder_card_sections":
+            handleResetFolderCardSections(msg, ctx);
+            break;
+          case "set_folder_group_by":
+            handleSetFolderGroupBy(msg, ctx);
+            break;
+          case "set_default_group_by":
+            handleSetDefaultGroupBy(msg, ctx);
+            break;
+          case "set_lane_collapsed":
+            handleSetLaneCollapsed(msg, ctx);
             break;
           case "add_folder_to_workspace":
             handleAddFolderToWorkspace(msg, ctx);

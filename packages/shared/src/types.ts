@@ -106,6 +106,11 @@ export interface GitWorktreeInfo {
   base?: string;
 }
 
+/** Lowercased GitHub PR state. Draft is a separate flag (`gitPrDraft`). */
+export type GitPrState = "open" | "closed" | "merged";
+/** Collapsed PR checks summary. See `platform/check-rollup.ts`. */
+export type GitPrChecks = "passing" | "failing" | "pending" | "none";
+
 /**
  * Working-tree dirtiness + upstream drift for a cwd, parsed from one
  * `git status --porcelain=v2 --branch` call. Keyed by cwd, not by session:
@@ -267,8 +272,18 @@ export interface DashboardSession {
   currentTool?: string | null;
   gitBranch?: string;
   gitBranchUrl?: string;
-  gitPrNumber?: number;
-  gitPrUrl?: string;
+  gitPrNumber?: number | null;
+  gitPrUrl?: string | null;
+  /**
+   * PR status for the session's branch (bridge `GH_PR_STATUS` probe on its
+   * own ≥120 s cadence). Absent = unknown / older bridge; `null` = no PR.
+   * Not persisted. See change: redesign-composer-session-strip (D5).
+   */
+  gitPrState?: GitPrState | null;
+  gitPrDraft?: boolean | null;
+  gitPrChecks?: GitPrChecks | null;
+  /** Epoch ms of the last successful PR detection (freshness gate for Merge). */
+  gitPrCheckedAt?: number | null;
   /**
    * Working-tree dirtiness + upstream drift, sourced hybrid: passive
    * broadcast on the bridge's 30 s VCS tick (`git_info_update`) plus an
@@ -509,6 +524,17 @@ export interface DashboardSession {
    */
   goalId?: string;
   /**
+   * How many DIRECT rlm children this session has, counted by the server's rlm
+   * scanner at the same moment the child rows were produced. Lets the lead's
+   * card show "3 children" — including while they are all finished — without the
+   * client having to count a list it may not have received.
+   *
+   * Not persisted to `.meta.json`: it is recomputed from the artifacts tree on
+   * every scan, so a stale copy on the sidecar would be worse than none.
+   * See change: surface-rlm-subagent-children.
+   */
+  childCount?: number;
+  /**
    * Core-owned cold-start recovery opt-out, mirror of `SessionMeta.recover`.
    * Absent ⇒ recoverable (`true`). Resolved from an owning plugin's lifecycle
    * declaration `{ recover }` through the generic session-ownership seam; core
@@ -517,6 +543,28 @@ export interface DashboardSession {
    * owned session gains). See change: detach-automation-goal-from-core.
    */
   recover?: boolean;
+  /**
+   * rlm child id (`sub-<8hex>`) when this session is a prime-agent `rlm.spawn()`
+   * child. Absent on every top-level session.
+   *
+   * prime-agent runs a child as an IN-PROCESS sub-session of its parent's
+   * worker, so a child never registers with the dashboard bridge and never
+   * appears on disk under the sessions dir. These three fields are how the
+   * server's rlm scanner (which reads
+   * `<agentDir>/session-artifacts/<parent-uuid>/sub-<id>/`) projects it as a
+   * peer row that the client can nest under its lead.
+   *
+   * See change: surface-rlm-subagent-children.
+   */
+  rlmChildId?: string;
+  /** 1 for a child of a top-level session, 2 for a grandchild. */
+  rlmDepth?: number;
+  /**
+   * The PARENT session's `id`. Absent ⇒ not a child. This is the field the
+   * client's nesting pass groups on, so it must be a `DashboardSession.id`
+   * (the session uuid), never a path.
+   */
+  parentSessionId?: string;
   /**
    * Core-owned socket-close finalization flag. When `true`, the gateway
    * finalizes the session immediately on socket close (no reconnect grace)

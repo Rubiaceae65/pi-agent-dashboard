@@ -1,9 +1,9 @@
 /**
  * Namespace coverage — the safety net for the universal network guard.
  *
- * The guard's jurisdiction is prefix-scoped (`/api`, `/v1`, `/editor`, `/live`),
- * so a future dangerous route registered OUTSIDE those prefixes would be
- * silently unguarded. This suite boots the real server (so plugin routes are
+ * The guard's jurisdiction is prefix-scoped (`/api`, `/v1`, `/editor`, `/live`,
+ * and the static sub-apps `/mobile` + `/links`), so a future dangerous route
+ * registered OUTSIDE those prefixes would be silently unguarded. This suite boots the real server (so plugin routes are
  * registered exactly as they are in production), collects every route via
  * `onRoute`, and proves each one is either:
  *
@@ -109,7 +109,7 @@ describe("S17: every registered route is guarded or explicitly exempt", () => {
     const offenders = routes.filter((r) => !isCovered(r.url));
     expect(
       offenders.map((r) => `${r.method} ${r.url}`),
-      "a dangerous route outside the guard's jurisdiction is unguarded — either move it under /api|/v1|/editor|/live, or add its namespace to INDEPENDENTLY_AUTHENTICATED",
+      "a dangerous route outside the guard's jurisdiction is unguarded — either move it under /api|/v1|/editor|/live|/mobile|/links, or add its namespace to INDEPENDENTLY_AUTHENTICATED",
     ).toEqual([]);
   });
 

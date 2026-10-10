@@ -234,8 +234,10 @@ describe("history_backfill — range and span (E27, E28, E29, E30, E31, P3)", ()
   it("the head ADVANCES across successive requests, so remainingGapCount terminates", async () => {
     const { ctx, subs, win } = await subscribed();
     let remaining = win.gapCount;
+    // One request drains at most MAX_BACKFILL_EVENTS events, so a contiguous
+    // head walk needs gapCount / cap iterations; the +5 is slack.
     let guard = 0;
-    while (remaining > 0 && guard++ < 20) {
+    while (remaining > 0 && guard++ < Math.ceil(win.gapCount / MAX_BACKFILL_EVENTS) + 5) {
       const gap = peekGapState(ctx.ws, "s1")!;
       await handleHistoryBackfill(
         { type: "history_backfill", sessionId: "s1", fromSeq: gap.headMaxSeq + 1, toSeq: gap.headMaxSeq + MAX_BACKFILL_EVENTS },
@@ -276,24 +278,24 @@ describe("history_backfill — count-bounded serving (E1, E2, E3, E4, E11)", () 
     handleHistoryBackfill({ type: "history_backfill", sessionId: "s1", fromSeq, toSeq }, subs, ctx);
 
   it("E1: a gap holding exactly the cap serves all of it in one response", async () => {
-    // n=1000 → head 1..50, tail 551..1000 → the gap [51,550] holds exactly 500.
-    const { ctx, subs, win } = await primed(1000);
-    expect(win.tailMinSeq - win.headMaxSeq - 1).toBe(500);
+    // n=700 → head 1..50, tail 251..700 → the gap [51,250] holds exactly the cap.
+    const { ctx, subs, win } = await primed(700);
+    expect(win.tailMinSeq - win.headMaxSeq - 1).toBe(MAX_BACKFILL_EVENTS);
     await backfill(ctx, subs, win.headMaxSeq + 1, win.tailMinSeq - 1);
     const [res] = resultsOf(ctx);
     expect(res.error).toBeUndefined();
-    expect(res.events).toHaveLength(500);
+    expect(res.events).toHaveLength(MAX_BACKFILL_EVENTS);
     expect(res.remainingGapCount).toBe(0);
   });
 
-  it("E2: one over the cap serves the NEWEST 500, with the tail credited to them", async () => {
-    // n=1001 → the gap [51,551] holds exactly 501.
-    const { ctx, subs, win } = await primed(1001);
+  it("E2: one over the cap serves the NEWEST cap-many, with the tail credited to them", async () => {
+    // n=701 → the gap [51,251] holds exactly the cap + 1.
+    const { ctx, subs, win } = await primed(701);
     await backfill(ctx, subs, win.headMaxSeq + 1, win.tailMinSeq - 1);
     const [res] = resultsOf(ctx);
     expect(res.error).toBeUndefined();
-    expect(res.events).toHaveLength(500);
-    // The 500th-newest seq, not the requested floor.
+    expect(res.events).toHaveLength(MAX_BACKFILL_EVENTS);
+    // The cap-th-newest seq, not the requested floor.
     expect(res.servedFrom).toBe(52);
     expect(res.events[0].seq).toBe(52);
     expect(res.remainingGapCount).toBeGreaterThanOrEqual(1);
@@ -322,30 +324,30 @@ describe("history_backfill — count-bounded serving (E1, E2, E3, E4, E11)", () 
   });
 
   it("E4: servedFrom is the lowest SELECTED seq — the silent-drop fix", async () => {
-    // >500 events in the gap; the 500th-newest is a message_start, so the snap
+    // >cap events in the gap; the cap-th-newest is a message_start, so the snap
     // cannot raise the bound and the credit must equal the raw selection.
-    const { ctx, subs, win } = await primed(5000, { 4051: "message_start" });
+    const { ctx, subs, win } = await primed(5000, { 4351: "message_start" });
     await backfill(ctx, subs, win.headMaxSeq + 1, win.tailMinSeq - 1);
     const [res] = resultsOf(ctx);
     expect(res.error).toBeUndefined();
-    expect(res.events).toHaveLength(500);
-    expect(res.servedFrom).toBe(4051);
+    expect(res.events).toHaveLength(MAX_BACKFILL_EVENTS);
+    expect(res.servedFrom).toBe(4351);
     expect(res.servedFrom).toBe(res.events[0].seq);
-    expect(peekGapState(ctx.ws, "s1")!.tailMinSeq).toBe(4051);
-    // NOT exhausted: the 4000 older gap events are still owed.
-    expect(res.remainingGapCount).toBe(4000);
+    expect(peekGapState(ctx.ws, "s1")!.tailMinSeq).toBe(4351);
+    // NOT exhausted: the 4300 older gap events are still owed.
+    expect(res.remainingGapCount).toBe(4300);
     expect(res.remainingGapCount).toBeGreaterThan(0);
   });
 
   it("E11: a snap on the final full request defers the last event to one further request", async () => {
-    // The gap holds exactly 500; a boundary at seq 52 makes the snap hold back
-    // seq 51, so the first response leaves remainingGapCount = 1 — the walk
-    // takes one more step, which then reports 0.
-    const { ctx, subs, win } = await primed(1000, { 52: "message_start" });
+    // The gap holds exactly the cap; a boundary at seq 52 makes the snap hold
+    // back seq 51, so the first response leaves remainingGapCount = 1 — the
+    // walk takes one more step, which then reports 0.
+    const { ctx, subs, win } = await primed(700, { 52: "message_start" });
     await backfill(ctx, subs, win.headMaxSeq + 1, win.tailMinSeq - 1);
     let [res] = resultsOf(ctx);
     expect(res.error).toBeUndefined();
-    expect(res.events).toHaveLength(499);
+    expect(res.events).toHaveLength(MAX_BACKFILL_EVENTS - 1);
     expect(res.servedFrom).toBe(52);
     expect(res.remainingGapCount).toBe(1);
 
@@ -517,9 +519,9 @@ describe("history_backfill — symmetric gap (E13–E23, X4)", () => {
    * credit the TAIL, keeping one consistent direction of travel (D1a).
    */
   describe("E13: edge crediting is exclusive and orientation-driven", () => {
-    // A gap SMALLER than one max span, so a request can abut both edges at once
-    // without the span clamp destroying one of the adjacencies.
-    const small = () => primed(800);
+    // A gap AT the cap, so a request can abut both edges at once without the
+    // count cap destroying one of the adjacencies.
+    const small = () => primed(700);
 
     it("(head-adjacent, tail-adjacent) credits the TAIL and leaves the head alone", async () => {
       const { ctx, subs, win } = await small();
@@ -596,15 +598,15 @@ describe("history_backfill — symmetric gap (E13–E23, X4)", () => {
    */
   it("E18/E21: a tail-anchored slice snaps its LOWER edge, and the tail is credited POST-snap", async () => {
     // A completed message boundary 40 events into the slice.
-    const { ctx, subs, win } = await primed(5000, { 4090: "message_end", 4091: "message_start" });
+    const { ctx, subs, win } = await primed(5000, { 4391: "message_end", 4392: "message_start" });
     await backfill(ctx, subs, win.tailMinSeq - MAX_BACKFILL_EVENTS, win.tailMinSeq - 1);
     const [res] = resultsOf(ctx);
     expect(res.error).toBeUndefined();
     // E18: the served range BEGINS at the boundary, not at the raw cut.
-    expect(res.servedFrom).toBe(4091);
-    expect(res.events[0].seq).toBe(4091);
+    expect(res.servedFrom).toBe(4392);
+    expect(res.events[0].seq).toBe(4392);
     // E21: the recorded edge is the post-snap bound, never the pre-snap one.
-    expect(peekGapState(ctx.ws, "s1")!.tailMinSeq).toBe(4091);
+    expect(peekGapState(ctx.ws, "s1")!.tailMinSeq).toBe(4392);
     expect(peekGapState(ctx.ws, "s1")!.tailMinSeq).not.toBe(win.tailMinSeq - MAX_BACKFILL_EVENTS);
   });
 
@@ -630,15 +632,15 @@ describe("history_backfill — symmetric gap (E13–E23, X4)", () => {
   });
 
   it("E22: a head-anchored request snaps its UPPER edge instead, chosen by orientation", async () => {
-    const { ctx, subs, win } = await primed(5000, { 500: "message_end" });
+    const { ctx, subs, win } = await primed(5000, { 210: "message_end" });
     await backfill(ctx, subs, win.headMaxSeq + 1, win.headMaxSeq + MAX_BACKFILL_EVENTS);
     const [res] = resultsOf(ctx);
     expect(res.error).toBeUndefined();
     // Lower edge untouched (it is not the gap-facing one for this orientation).
     expect(res.servedFrom).toBe(win.headMaxSeq + 1);
-    expect(res.servedTo).toBe(500);
-    expect(res.events.at(-1)!.seq).toBe(500);
-    expect(peekGapState(ctx.ws, "s1")!.headMaxSeq).toBe(500);
+    expect(res.servedTo).toBe(210);
+    expect(res.events.at(-1)!.seq).toBe(210);
+    expect(peekGapState(ctx.ws, "s1")!.headMaxSeq).toBe(210);
   });
 
   /**
@@ -701,8 +703,10 @@ describe("history_backfill — symmetric gap (E13–E23, X4)", () => {
   it("walking DOWN from the tail terminates, exactly as the head walk does", async () => {
     const { ctx, subs, win } = await primed();
     let remaining = win.gapCount;
+    // One request drains at most MAX_BACKFILL_EVENTS events, so a contiguous
+    // tail walk needs gapCount / cap iterations; the +5 is slack.
     let guard = 0;
-    while (remaining > 0 && guard++ < 20) {
+    while (remaining > 0 && guard++ < Math.ceil(win.gapCount / MAX_BACKFILL_EVENTS) + 5) {
       const gap = peekGapState(ctx.ws, "s1")!;
       // The client's own `nextBackfillRange` shape (D2): the FULL remaining
       // range, floored at the head edge — the server's count cap, not a
@@ -783,7 +787,7 @@ describe("history_backfill — edge crediting in a head-free window (E10, E11)",
     const { ctx, subs, win } = await primedTailOnly();
     let tail = win.tailMinSeq;
     let remaining = win.gapCount;
-    for (let i = 0; i < 20 && remaining > 0; i++) {
+    for (let i = 0; i < Math.ceil(win.gapCount / MAX_BACKFILL_EVENTS) + 5 && remaining > 0; i++) {
       const to = tail - 1;
       const from = Math.max(1, to - MAX_BACKFILL_EVENTS + 1);
       (ctx.sendTo as any).mockClear();
@@ -807,7 +811,7 @@ describe("history_backfill — edge crediting in a head-free window (E10, E11)",
    */
   it("E11: a range abutting BOTH edges in a head-tail window still credits only the tail", async () => {
     const ctx = createMockContext({ maxReplayEvents: 500, replayWindowMode: "head-tail" });
-    for (let i = 1; i <= 800; i++) ctx.eventStore.insertEvent("s1", makeEvent());
+    for (let i = 1; i <= 700; i++) ctx.eventStore.insertEvent("s1", makeEvent());
     const subs = new Set<string>();
     handleSubscribe({ type: "subscribe", sessionId: "s1", lastSeq: 0 }, subs, ctx);
     await settleFor();
