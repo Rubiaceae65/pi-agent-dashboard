@@ -7,3 +7,7 @@ REST routes: config, health, shutdown, tunnel. External-editor endpoints `/api/e
 `/api/health` gains the additive `accessGrants` field from the optional `readAccessGrants` dep (`AccessGrantHealth`), failure-isolated like every other telemetry read: `null` when unwired or when the read throws, never a 500. See change: add-access-grant-dialog (task 9.3).
 
 `/api/health.accessGrants` served only when `request.isAuthenticated` or `isGenuinelyLocal(ip, headers)` (tunnel-forwarded 127.0.0.1 excluded); else `null` — endpoint is unguarded. See change: add-access-grant-dialog (2b.7 review).
+
+See change: surface-denial-remedy-in-previews — `/api/health` access block gated by shared `canDiscloseAccessPosture`.
+`bundleHash` policy honours `fixturePluginsEnabled()` (`!config.dev && !fixturePluginsEnabled()`), matching the vite fixture gate. See change: expose-plugin-credential-and-oauth-seams.
+See change: fix-trusted-network-tunnel-bypass — `/api/health` additive `trustPosture: {trustedHasLoopback} | null` (via `loopbackCoveringEntries`), same `canDiscloseAccessPosture` gate as `accessGrants`; dep `readTrustedNetworks?` (server wires `liveTrustedNetworks`; falls back to `config.resolvedTrustedNetworks`).

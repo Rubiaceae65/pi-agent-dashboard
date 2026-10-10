@@ -1,0 +1,11 @@
+{
+  "name": "pi dashboard (mobile)",
+  "short_name": "pi mobile",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "description": "Thin phone client for the pi-agent-dashboard API. No server changes."
+}

@@ -34,6 +34,7 @@
   "files": [
     "scripts/maybe-patch-package.cjs",
     "scripts/fix-pty-permissions.cjs",
+    "tsconfig.base.json",
     "packages/server/src/",
     "packages/server/scripts/",
     "packages/server/package.json",
@@ -46,9 +47,16 @@
     "packages/extension/tsconfig.json",
     "packages/dist/",
     "docs/architecture.md",
-    "AGENTS.md",
+    "/AGENTS.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "!packages/**/__tests__",
+    "!packages/**/__fixtures__",
+    "!packages/**/__mocks__",
+    "!packages/**/*.test.*",
+    "!packages/**/*.spec.*",
+    "!packages/**/AGENTS.md",
+    "!packages/**/*.AGENTS.md"
   ],
   "scripts": {
     "postinstall": "node scripts/maybe-patch-package.cjs && node scripts/fix-pty-permissions.cjs",
@@ -86,6 +94,8 @@
     "site:preview": "npm --prefix site run preview",
     "screenshots": "npm --prefix site run screenshots",
     "pretest:e2e": "node -e \"process.env.PW_CHANNEL||require('child_process').execSync('playwright install chromium',{stdio:'inherit'})\"",
+    "pretest:mobile-render": "node -e \"process.env.PW_CHANNEL||require('child_process').execSync('playwright install chromium',{stdio:'inherit'})\"",
+    "test:mobile-render": "playwright test --config playwright.mobile-render.config.ts",
     "test:e2e": "playwright test",
     "pretest:e2e:ui": "node -e \"process.env.PW_CHANNEL||require('child_process').execSync('playwright install chromium',{stdio:'inherit'})\"",
     "test:e2e:ui": "playwright test --ui",
@@ -111,6 +121,7 @@
     "appdmg": "^0.6.6"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
     "@biomejs/biome": "2.5.11",
     "@blackbelt-technology/pi-dashboard-bus-client": "^0.8.0",
     "@blackbelt-technology/pi-dashboard-shared": "^0.8.0",

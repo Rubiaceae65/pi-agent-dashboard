@@ -3,10 +3,11 @@
  * Supports loopback, trusted networks (CIDR/wildcard/exact), and authenticated users.
  */
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { SUB_APP_PREFIXES } from "../lib/static-subapps.js";
 import { blockEvents } from "../tunnel/tunnel-block-events.js";
 import { isBypassed } from "./bypass-urls.js";
 import { verifyLocalToken } from "./local-token.js";
-import { isLoopback } from "./loopback.js";
+import { isLoopback, isLoopbackRange } from "./loopback.js";
 
 /**
  * Request headers a reverse proxy / tunnel injects. Their presence on a
@@ -77,6 +78,21 @@ export function isGenuinelyLocal(ip: string, headers: HeaderBag): boolean {
 }
 
 /**
+ * May this request see the access-prompting posture (host-gate mode, whether
+ * prompting is on, why a denial was not asked about)? Authenticated OR
+ * genuinely local — stricter than the network guard, because a trusted-CIDR or
+ * local-token caller with no credential must not learn it. One predicate for
+ * `/api/health`'s `accessGrants` block and every denial body's `promptOutcome`.
+ * See change: surface-denial-remedy-in-previews (design D5).
+ */
+export function canDiscloseAccessPosture(request: { ip: string; headers: unknown }): boolean {
+  return (
+    (request as { isAuthenticated?: boolean }).isAuthenticated === true ||
+    isGenuinelyLocal(request.ip, request.headers as Record<string, unknown>)
+  );
+}
+
+/**
  * Is the request `Host` header a loopback host name — `localhost`,
  * `127.0.0.1`, `[::1]` (or bare `::1`), any port? Fail-closed on anything
  * unparseable (no port stripping unless the suffix is all digits, so
@@ -139,6 +155,83 @@ export function isBypassedHost(sourceIp: string, bypassHosts: string[]): boolean
   }
   return false;
 }
+
+/**
+ * A loopback-RANGE socket peer carrying a core proxy-forwarding header: a
+ * tunnel agent (zrok, ngrok, `tailscale serve`) or same-host reverse proxy
+ * relaying someone else's request. Never trusted by a network entry.
+ * See change: fix-trusted-network-tunnel-bypass (D1, D4).
+ */
+export function isRelayedLoopback(ip: string, headers: HeaderBag): boolean {
+  return isLoopbackRange(ip) && hasProxyForwardingHeaders(headers);
+}
+
+/**
+ * The ONE peer-IP trust predicate. Every trusted-network / bypass-host decision
+ * on a socket peer goes through here, never through {@link isBypassedHost}
+ * directly (enforced by `trusted-source-single-predicate.test.ts`). A relayed
+ * loopback peer is refused even when the list covers loopback / `0.0.0.0/0`:
+ * genuine local traffic is admitted by `isGenuinelyLocal` instead.
+ * See change: fix-trusted-network-tunnel-bypass (D1).
+ */
+export function isTrustedSource(ip: string, headers: HeaderBag, trusted: string[]): boolean {
+  if (trusted.length === 0) return false;
+  if (isRelayedLoopback(ip, headers)) return false;
+  return isBypassedHost(ip, trusted);
+}
+
+const LOOPBACK_PROBES = ["127.0.0.1", "::1", "::ffff:127.0.0.1"] as const;
+
+/**
+ * Entries of a trusted list that cover loopback - inert for tunnel traffic,
+ * redundant for local traffic. An entry counts when the matcher admits a
+ * loopback probe, OR its base (`/n` stripped, `*` -> `0`, a short dotted form
+ * padded to four octets) is in the loopback range (catches `127.0.0.5`,
+ * `127.0.0.4/30`, `::1/128`, and `127.*` - whose single `*` spans one
+ * octet, so the matcher itself never admits a real loopback address).
+ * See change: fix-trusted-network-tunnel-bypass (D3).
+ */
+export function loopbackCoveringEntries(list: readonly string[]): string[] {
+  return list.filter((entry) => {
+    if (LOOPBACK_PROBES.some((probe) => isBypassedHost(probe, [entry]))) return true;
+    let base = entry.split("/")[0].replace(/\*/g, "0");
+    if (!base.includes(":")) {
+      const octets = base.split(".");
+      while (octets.length < 4) octets.push("0");
+      base = octets.join(".");
+    }
+    return isLoopbackRange(base);
+  });
+}
+
+/**
+ * Build a trusted-list observer that warns ONCE per distinct set of
+ * loopback-covering entries. Memoized on the array REFERENCE: the config
+ * snapshot hands back the same array until a reparse, so a hot-path call on an
+ * unchanged list is one reference compare. The dedup key is the sorted
+ * covering-entry signature (not the config stamp, which changes on every
+ * unrelated write). A factory so the matcher is injectable in tests.
+ * See change: fix-trusted-network-tunnel-bypass (D3).
+ */
+export function createTrustedListNoter(covering: (list: readonly string[]) => string[] = loopbackCoveringEntries) {
+  let lastRef: readonly string[] | null = null;
+  let lastSignature = "";
+  return function noteTrustedList(list: readonly string[]): void {
+    if (list === lastRef) return;
+    lastRef = list;
+    const entries = [...covering(list)].sort();
+    const signature = entries.join("\n");
+    if (signature !== "" && signature !== lastSignature) {
+      console.warn(
+        `[trusted-networks] ${entries.map((e) => `"${e}"`).join(", ")} ${entries.length === 1 ? "covers" : "cover"} loopback — ignored for tunnel-relayed requests; local requests are already trusted`,
+      );
+    }
+    lastSignature = signature;
+  };
+}
+
+/** Process-wide noter, fed by the guard's trusted read and once at boot. */
+export const noteTrustedList = createTrustedListNoter();
 
 export function matchCidr(ip: string, cidr: string): boolean {
   const [base, bitsStr] = cidr.split("/");
@@ -215,9 +308,14 @@ function sendNetworkDenied(request: FastifyRequest, reply: FastifyReply): void {
       origin: readRequestOrigin(request.headers),
     });
   } catch { /* recording is best-effort, never blocks the denial */ }
-  try {
-    networkDenialObserver?.(request);
-  } catch { /* observing is best-effort, never blocks the denial */ }
+  // No grant prompt for a relayed-loopback peer: "trust 127.0.0.1?" would name
+  // the tunnel agent, and the resulting entry is inert under isTrustedSource
+  // (grant->deny loop). See change: fix-trusted-network-tunnel-bypass (D4).
+  if (!isRelayedLoopback(request.ip, request.headers as Record<string, unknown>)) {
+    try {
+      networkDenialObserver?.(request);
+    } catch { /* observing is best-effort, never blocks the denial */ }
+  }
   // Self-describing denial so clients can branch on policy-denial vs
   // transport failure. `error` is the stable machine-readable literal;
   // `reason`/`hint` are human copy. See change:
@@ -256,7 +354,8 @@ function hasNetworkPassCondition(
   // Affirmative local-IPC token.
   if (opts.localToken && verifyLocalToken(headers, opts.localToken)) return true;
   const trusted = opts.readTrusted();
-  if (trusted.length > 0 && isBypassedHost(request.ip, trusted)) return true;
+  noteTrustedList(trusted);
+  if (isTrustedSource(request.ip, headers, trusted)) return true;
   return Boolean((request as any).isAuthenticated);
 }
 
@@ -264,6 +363,28 @@ function hasNetworkPassCondition(
  * Create a network guard that allows loopback, trusted networks, or authenticated requests.
  * Fastify lifecycle guarantees onRequest (auth) runs before preHandler (this guard).
  */
+/**
+ * Brand stamped on every function `createNetworkGuard` returns, so a test (or a
+ * review tool) can tell "this route carries THE network guard" from "this route
+ * carries some other preHandler" without booting a server and racing an
+ * `onRequest` chain.
+ *
+ * `Symbol.for` (not a module-local `Symbol`) so the brand survives the two
+ * module instances a dual-build test run can end up with — a `Symbol()` would
+ * make the check silently vacuous, which is the exact failure mode a guard
+ * regression test exists to prevent.
+ *
+ * See change: close-unguarded-session-routes.
+ */
+export const NETWORK_GUARD_BRAND: unique symbol = Symbol.for(
+  "pi-agent-dashboard.networkGuard",
+) as never;
+
+/** True when `fn` is a per-route network guard produced by `createNetworkGuard`. */
+export function isNetworkGuard(fn: unknown): boolean {
+  return typeof fn === "function" && (fn as unknown as Record<symbol, unknown>)[NETWORK_GUARD_BRAND] === true;
+}
+
 export function createNetworkGuard(
   /**
    * A fixed list, or a thunk read on EVERY request. The server passes a thunk
@@ -275,22 +396,51 @@ export function createNetworkGuard(
   opts?: { localToken?: string },
 ) {
   const readTrusted = typeof trustedNetworks === "function" ? trustedNetworks : () => trustedNetworks;
-  return async function networkGuard(
+  const guard = async function networkGuard(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
     if (hasNetworkPassCondition(request, { readTrusted, localToken: opts?.localToken })) return;
     sendNetworkDenied(request, reply);
   };
+  (guard as unknown as Record<symbol, unknown>)[NETWORK_GUARD_BRAND] = true;
+  return guard;
 }
 
 /**
  * Jurisdiction namespaces of the universal guard: the sensitive HTTP surfaces.
- * Anchored on a TRAILING SLASH so `/apiv2` is a near-miss rather than `/api`.
- * Every dangerous route in the server lives under one of these; the
- * namespace-coverage test enforces that. See change: add-universal-network-guard.
+ * The four API namespaces below are anchored on a TRAILING SLASH so `/apiv2` is
+ * a near-miss rather than `/api`; the sub-app entries are matched bare, for the
+ * reason given below. Every dangerous route in the server lives under one of
+ * these; the namespace-coverage test enforces that.
+ * See change: add-universal-network-guard.
+ *
+ * The static sub-apps are IN this list, and being explicit about the near-miss
+ * trade is the point. `/api/` is a prefix every route shares, so a trailing
+ * slash costs nothing. A sub-app prefix is a whole top-level surface owned by
+ * one team, so matching it BARE is the stricter and more correct reading: it
+ * also claims the slashless `/links` and `/mobile`, and over-claims only paths
+ * that no other feature can own. The cost is that a hypothetical `/linksxyz`
+ * would be denied too — a 403 on a URL that serves nothing, which is the
+ * direction to err in.
+ *
+ * These were NOT here when the sub-apps were introduced. The first version
+ * reasoned that a sub-app is "static bytes with no capability" and therefore
+ * safe outside the guard, the argument that holds for the SPA shell. It does
+ * not hold for a sub-app: the links page's HTML *is* the disclosure — it ships
+ * the tailnet, the host LAN, the Brain and sandbox names, and the service ports
+ * to any peer that can open the socket. The prefixes are imported from
+ * `lib/static-subapps.ts` — the same module the route registration reads — so
+ * the served set and the guarded set cannot drift apart.
+ * See change: add-universal-network-guard, guard-static-subapps.
  */
-const GUARD_JURISDICTION_PREFIXES = ["/api/", "/v1/", "/editor/", "/live/"] as const;
+const GUARD_JURISDICTION_PREFIXES: readonly string[] = [
+  "/api/",
+  "/v1/",
+  "/editor/",
+  "/live/",
+  ...SUB_APP_PREFIXES,
+];
 
 /**
  * Fixed in-namespace public endpoints, compared against the EXACT pathname.

@@ -40,6 +40,9 @@ importers:
         specifier: '>=1.3.6'
         version: 1.3.20
     devDependencies:
+      '@axe-core/playwright':
+        specifier: ^4.10.0
+        version: 4.13.0(playwright-core@1.62.1)
       '@biomejs/biome':
         specifier: 2.5.11
         version: 2.5.11
@@ -315,6 +318,9 @@ importers:
       '@blackbelt-technology/pi-dashboard-flows-plugin':
         specifier: ^0.8.0
         version: link:../flows-plugin
+      '@blackbelt-technology/pi-dashboard-gmail-plugin':
+        specifier: ^0.8.0
+        version: link:../gmail-plugin
       '@blackbelt-technology/pi-dashboard-goal-plugin':
         specifier: ^0.8.0
         version: link:../goal-plugin
@@ -342,6 +348,9 @@ importers:
       '@blackbelt-technology/pi-dashboard-subagents-plugin':
         specifier: ^0.8.0
         version: link:../subagents-plugin
+      '@blackbelt-technology/pi-dashboard-system-one-plugin':
+        specifier: ^0.8.0
+        version: link:../system-one-plugin
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -811,6 +820,37 @@ importers:
 
   packages/frontend-patterns: {}
 
+  packages/gmail-plugin:
+    dependencies:
+      '@blackbelt-technology/dashboard-plugin-runtime':
+        specifier: ^0.8.0
+        version: link:../dashboard-plugin-runtime
+      '@blackbelt-technology/pi-dashboard-shared':
+        specifier: ^0.8.0
+        version: link:../shared
+      '@fastify/rate-limit':
+        specifier: ^11.2.0
+        version: 11.2.0
+      fastify:
+        specifier: ^5.0.0
+        version: 5.12.1
+      oauth4webapi:
+        specifier: ^3.8.8
+        version: 3.8.8
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.5(@types/react@19.2.18)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+
   packages/goal-plugin:
     dependencies:
       '@blackbelt-technology/dashboard-plugin-runtime':
@@ -1070,6 +1110,12 @@ importers:
       typebox:
         specifier: '>=1.3.6'
         version: 1.3.20
+
+  packages/music-production:
+    devDependencies:
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@26.4.0)(jsdom@29.1.1(@noble/hashes@2.4.0))(lightningcss@1.32.0)(supports-color@8.1.1)(terser@5.51.2)
 
   packages/nano-banana:
     dependencies:
@@ -1333,6 +1379,52 @@ importers:
       vitest:
         specifier: ^4.0.0
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.0)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.12)(yaml@2.9.0))
+
+  packages/system-one: {}
+
+  packages/system-one-plugin:
+    dependencies:
+      '@blackbelt-technology/dashboard-plugin-runtime':
+        specifier: ^0.8.0
+        version: link:../dashboard-plugin-runtime
+      '@blackbelt-technology/pi-dashboard-shared':
+        specifier: ^0.8.0
+        version: link:../shared
+      '@blackbelt-technology/pi-system-one':
+        specifier: ^0.8.0
+        version: link:../system-one
+      '@fastify/rate-limit':
+        specifier: ^11.2.0
+        version: 11.2.0
+      fastify:
+        specifier: ^5.0.0
+        version: 5.12.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.5(@types/react@19.2.18)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+
+  packages/untrusted-content-guard:
+    dependencies:
+      '@mariozechner/pi-coding-agent':
+        specifier: '>=0.73.1'
+        version: 0.73.1(@modelcontextprotocol/sdk@1.30.0(supports-color@8.1.1)(zod@4.5.1))(@opentelemetry/api@1.9.0)(supports-color@8.1.1)(ws@8.21.3)(zod@4.5.1)
+      htmlparser2:
+        specifier: ^10.1.0
+        version: 10.1.0
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 0.86.1
+        version: 0.86.1(@modelcontextprotocol/sdk@1.30.0(supports-color@8.1.1)(zod@4.5.1))(supports-color@8.1.1)(ws@8.21.3)(zod@4.5.1)
 
   packages/video-production:
     dependencies:
@@ -8327,6 +8419,9 @@ packages:
 
   oauth-sign@0.9.0:
     resolution: {integrity: sha512-fexhUFFPTGV8ybAtSIGbV6gOkSv8UtRbDBnAyLQw4QPKkgNlsH2ByPGtMUqdWkos6YCRmAqViwgZrJc/mRDzZQ==}
+
+  oauth4webapi@3.8.8:
+    resolution: {integrity: sha512-8N28E+a/oxfXWBgOMt+ZP/JUf/XR+IFbvkAEPP3gznXOMv9BpAAwiIj0TFNz3tGTPc0ZQ8zmWBNgN1nAys0gng==}
 
   object-assign@4.1.1:
     resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
@@ -18894,6 +18989,8 @@ snapshots:
 
   oauth-sign@0.9.0:
     optional: true
+
+  oauth4webapi@3.8.8: {}
 
   object-assign@4.1.1: {}
 
