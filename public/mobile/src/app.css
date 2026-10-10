@@ -82,6 +82,18 @@ body[data-view="detail"] .detail { display: flex; }
 .msg.sys { background: transparent; color: var(--muted); font-size: 13px; padding: 4px 2px; }
 .msg .who { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
 .msg pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+/* Event body lines. One class per line kind, produced by src/format.js.
+   A line is never a bare object: format.js has already turned every value
+   into text, so these rules only decide colour and weight. */
+.msg .text { white-space: pre-wrap; font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; margin: 2px 0; }
+.msg .think { color: var(--muted); font-style: italic; white-space: pre-wrap; font-size: 12px; margin: 2px 0; }
+.msg .tool { color: #9ecbff; font-weight: 600; font-size: 12px; margin: 4px 0 1px; }
+.msg .meta { color: var(--muted); white-space: pre-wrap; font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; margin: 2px 0; }
+.msg .err { color: #ff9d9d; white-space: pre-wrap; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; margin: 2px 0; }
+.msg.child { background: #1d2a22; }
+.msg.child .who { color: #9fe0b0; }
+.msg.tool { background: #1a1d26; }
+.row .k { font-size: 11px; color: var(--muted); margin-left: auto; padding-left: 8px; white-space: nowrap; }
 
 /* composer sits above the keyboard: dvh + safe-area */
 .composer {
