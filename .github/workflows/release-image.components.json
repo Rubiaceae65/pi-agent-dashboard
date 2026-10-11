@@ -1,0 +1,7 @@
+{
+ "dashboard": {
+  "image": "rubiaceae65/dashboard",
+  "dockerfile": "release-image/dashboard/Dockerfile.release",
+  "file": "ghcr.io/rubiaceae65/dashboard"
+ }
+}
