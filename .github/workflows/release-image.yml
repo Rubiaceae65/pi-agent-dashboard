@@ -1,0 +1,135 @@
+# Release images: build, push to ghcr.io, attach the SBOM attestation, report the digests.
+#
+# Why Actions and not the broker: GitHub Packages accepts a classic PAT or the Actions
+# GITHUB_TOKEN. A GitHub App INSTALLATION token can never push to ghcr, whatever
+# permission the App holds. So the registry write happens here, and NOTHING secret is
+# available to it: this workflow reads no repository secret and writes no signing key.
+# The cosign signature is produced on brain2 and attached by attach-signature.yml.
+#
+# One repo can carry several release components (atelier carries five), so the build is
+# a MATRIX: one row per component, each with its own Dockerfile, each producing its own
+# digest. One image per repo would have quietly merged five components into one.
+
+name: release-image
+
+on:
+  push:
+    tags: ['rc-*', 'v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (defaults to the short sha)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: [
+                    {
+                              "component": "dashboard",
+                              "image": "dashboard",
+                              "context": ".",
+                              "file": "release-image/dashboard/Dockerfile.release"
+                    }
+          ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the tag we publish under
+        id: ver
+        run: |
+          set -euo pipefail
+          SHORT="$(git rev-parse --short=7 HEAD)"
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="$SHORT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - id: setup-buildx
+        uses: docker/setup-buildx-action@v3
+
+      - id: login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=${{ matrix.image }}-${{ steps.ver.outputs.tag }}
+            type=raw,value=${{ matrix.image }}-${{ steps.ver.outputs.short }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+
+      - name: Record this component's digest
+        run: |
+          set -euo pipefail
+          DIGEST="${{ steps.build.outputs.digest }}"
+          test -n "$DIGEST"
+          jq -n --arg component "${{ matrix.component }}" \
+                --arg image     "${{ env.REGISTRY }}/${{ matrix.image }}" \
+                --arg digest    "$DIGEST" \
+                --arg tag       "${{ steps.ver.outputs.tag }}" \
+                --arg short     "${{ steps.ver.outputs.short }}" \
+                --arg sha       "${{ steps.ver.outputs.commit }}" \
+                --arg repo      "${{ github.repository }}" \
+                '{component:$component, image:$image, digest:$digest, tag:$tag,
+                  short_sha:$short, commit:$sha, repo:$repo}' > "digest-${{ matrix.component }}.json"
+          cat "digest-${{ matrix.component }}.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.component }}-${{ github.ref_name }}
+          path: digest-${{ matrix.component }}.json
+
+  collect:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*-${{ github.ref_name }}
+          merge-multiple: true
+      - name: One digests.json, one line per component
+        run: |
+          set -euo pipefail
+          jq -s 'sort_by(.component)' digest-*.json > digests.json
+          cat digests.json
+          {
+            echo "### digests"
+            echo
+            echo '```json'
+            cat digests.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ github.ref_name }}
+          path: digests.json
