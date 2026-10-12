@@ -1,9 +1,0 @@
-{
-  "worktreeInit": {
-    "gate": "test ! -f .never-created",
-    "run": {
-      "type": "script",
-      "command": "echo 'starting install'; echo 'ERESOLVE could not resolve dependency' 1>&2; sleep 1; exit 3"
-    }
-  }
-}

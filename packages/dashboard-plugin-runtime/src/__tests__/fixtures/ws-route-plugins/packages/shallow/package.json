@@ -1,4 +1,0 @@
-{
-  "name": "shallow",
-  "pi-dashboard-plugin": { "id": "shallow", "displayName": "shallow", "claims": [], "server": "./server.mjs" }
-}

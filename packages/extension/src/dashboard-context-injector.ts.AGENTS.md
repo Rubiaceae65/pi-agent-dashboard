@@ -1,3 +1,0 @@
-# dashboard-context-injector.ts — index
-
-Registers `before_agent_start` handler. Splice-replaces trailing `Current working directory:` line of system prompt with dashboard session-context fragment (delimiter + `You are pi session <sessionId> running in <cwd>.` + optional `Attached OpenSpec change: …`). Exports `buildContextFragment`, `spliceContextFragment` (pure), `registerDashboardContextInjector(pi, getBc, isActive)`. Reads live `bc.sessionId`/`bc.attachedChange` via getter; cwd from `event.systemPromptOptions.cwd ?? process.cwd()`. Coexists with pass-through before_agent_start forwarder (pi chains results). isActive guard prevents double-splice on /reload. See change: inject-session-context-into-agent.

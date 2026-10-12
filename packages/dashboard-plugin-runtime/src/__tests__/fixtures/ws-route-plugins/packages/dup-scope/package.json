@@ -1,4 +1,0 @@
-{
-  "name": "dup-scope",
-  "pi-dashboard-plugin": { "id": "dup-scope", "displayName": "dup-scope", "claims": [], "server": "./server.mjs" }
-}
