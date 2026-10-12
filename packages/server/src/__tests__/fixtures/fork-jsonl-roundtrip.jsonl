@@ -1,8 +1,0 @@
-{"type":"session","version":"1","id":"019dcdd5-0000-0000-0000-000000000000","timestamp":"2026-04-27T07:26:23.927Z","cwd":"/tmp/fork-test"}
-{"type":"model_change","id":"m1","timestamp":"2026-04-27T07:26:24.000Z","provider":"anthropic","modelId":"claude-sonnet-4"}
-{"type":"message","id":"u1","parentId":"m1","timestamp":"2026-04-27T07:26:25.000Z","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}
-{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-04-27T07:26:30.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Hi there!"}]}}
-{"type":"message","id":"u2","parentId":"a1","timestamp":"2026-04-27T07:26:40.000Z","message":{"role":"user","content":[{"type":"text","text":"How are you?"}]}}
-{"type":"message","id":"a2","parentId":"u2","timestamp":"2026-04-27T07:26:45.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Doing well."}]}}
-{"type":"message","id":"u3","parentId":"a2","timestamp":"2026-04-27T07:26:55.000Z","message":{"role":"user","content":[{"type":"text","text":"Goodbye"}]}}
-{"type":"message","id":"a3","parentId":"u3","timestamp":"2026-04-27T07:27:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Bye!"}]}}

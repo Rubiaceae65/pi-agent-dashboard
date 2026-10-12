@@ -1,3 +1,0 @@
-# pending-client-correlations.ts — index
-
-Maps server-minted `spawnToken` → client-minted `requestId`. Exports `PendingClientCorrelations`, `createPendingClientCorrelations`. `record(token, requestId, ttlMs)`/`consume`/`dispose`/`size`. TTL is PER RECORD, supplied by the caller from `deriveSpawnCorrelationTtlMs(timeoutUsedToArmThisSpawn)` — no module-level literal, and a non-positive TTL records nothing. The former hardcoded 60s killed the token before the watchdog it was meant to outlive had fired, so a raised `spawnRegisterTimeoutMs` dropped `spawnRequestId` and the client never auto-selected. In-memory only. See change: fix-spawn-correlation-ttl-coupling.
