@@ -1,8 +1,0 @@
-{
-  "name": "ensure-cli-fixture-bad-manifest",
-  "pi": {
-    "tools": [
-      { "id": "ffmpeg", "probe": "resolve", "provide": "brew install ffmpeg" }
-    ]
-  }
-}
