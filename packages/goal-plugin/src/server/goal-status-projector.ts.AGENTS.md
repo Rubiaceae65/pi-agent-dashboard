@@ -1,3 +1,0 @@
-# goal-status-projector.ts — index
-
-`createGoalStatusProjector({store,lookupSession,warn?})`. Peer `goal_status` consumer beside the accumulator. Projects live snapshot onto durable GoalRecord via `store.applyStatus`: status map (active→pursuing, paused→paused, done→achieved, cleared→cleared), idempotent (write on status change only). Per-driver (per-session) turn accounting: `totalTurnsUsed += max(0, turnsUsed - prevForDriver)` (prev=0 when cold → first-observed>0 counts, no cross-driver double-count); `lastKnownTurnsUsed`=latest; `lastProgressAt` on strict increase. Skips write on redundant (same status+turns) snapshot. Fire-and-forget. See change: persist-goal-status-and-progress.

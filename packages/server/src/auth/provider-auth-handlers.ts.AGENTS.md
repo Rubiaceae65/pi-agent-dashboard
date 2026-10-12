@@ -1,3 +1,0 @@
-# provider-auth-handlers.ts — index
-
-Barrel re-export only. Exports `OAuthRegistryEntry` (type) from `pi-oauth-types.ts` and `getOAuthRegistry` from `provider-auth-registry.ts`. The three hand-ported flows, their PKCE helpers and the `ProviderHandler` union are DELETED — pi-ai owns the flows. Kept as its own module so the import surface `provider-auth-storage.ts` and `provider-auth-routes.ts` already use does not churn; `oauthRegistryReady` + `getRegistryError` are imported from `provider-auth-registry.js` directly by the two surfaces that need them, not re-exported here. See change: delegate-provider-oauth-to-pi-ai (D1, D5).
