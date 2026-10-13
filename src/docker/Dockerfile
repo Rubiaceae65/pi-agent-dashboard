@@ -1,3 +1,6 @@
+# dashboard -- this repo's OWN docker/Dockerfile, verbatim.
+# node 24 + the pnpm monorepo build; Debian not Alpine, because node-pty needs glibc.
+
 # syntax=docker/dockerfile:1
 # ---------------------------------------------------------------------------
 # pi-dashboard all-in-one image.
@@ -10,9 +13,11 @@
 # ---------------------------------------------------------------------------
 
 # ============================ base stage ===================================
-# 2026-10-13 (pq-patch): Debian 13 (trixie) -> OpenSSL 3.5.x, so Node's TLS AND the
-# system TLS can negotiate X25519MLKEM768. Bookworm (Debian 12) is OpenSSL 3.0 and
-# cannot. node-pty needs glibc, which trixie is.
+# 2026-10-13 (pq-patch-20261012). Rebased onto the recipe that ACTUALLY built the RC 0005
+# image (release-image/<name>/Dockerfile.release), proven from the shipped image's own
+# build history -- not onto a stale copy that drops fixes the cut depends on.
+# Debian 13 (trixie) => OpenSSL 3.5.x. Debian 12 (bookworm) is OpenSSL 3.0.22 and
+# cannot do X25519MLKEM768. node-pty needs glibc, which trixie is.
 FROM node:24-trixie-slim AS base
 
 # Pinned tool versions — override at build time with --build-arg.
@@ -24,7 +29,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # 1.1 System packages. build-essential + python3 needed only for node-pty
 # native compile in the app stage; removed there afterwards.
-# 2026-10-13 (pq-patch): update step before installing anything.
+# UPDATE STEP (absent at RC 0005).
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends \
@@ -181,10 +186,10 @@ COPY tests ./tests
 COPY public ./public
 COPY .github ./.github
 COPY .pi/skills ./.pi/skills
-COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 # Sourced by both entrypoints so the deployment and the test harness supervise
 # the detached daemon identically.
-COPY --chmod=0755 docker/supervise-daemon.sh /usr/local/bin/supervise-daemon.sh
+COPY docker/supervise-daemon.sh /usr/local/bin/supervise-daemon.sh
 COPY docker/scripts ./docker/scripts
 
 # pnpm re-resolves the full platform optional-dep tree from pnpm-lock.yaml
@@ -206,6 +211,10 @@ RUN pnpm install --frozen-lockfile \
 # volume to the user that actually runs.
 RUN mkdir -p /home/pi/.pi /home/pi/.zrok2 && chown pi:pi /home/pi/.pi /home/pi/.zrok2
 
+# The RC 0005 recipe used `COPY --chmod=0755`, which is BuildKit-only syntax; this daemon has no
+# BuildKit (docker 29.1.3, no buildx plugin), so the build died at that layer. Functionally identical:
+# same file, same mode, set by an explicit chmod immediately after. No other line changed.
+RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/supervise-daemon.sh
 USER pi
 ENV HOME=/home/pi
 
