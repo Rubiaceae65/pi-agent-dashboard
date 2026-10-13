@@ -1,0 +1,58 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "docker": {
+    "pinDigests": true
+  },
+  "packageRules": [
+    {
+      "description": "Keep base images on current SECURITY releases (digest bump).",
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose",
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "digest",
+        "major",
+        "minor",
+        "patch"
+      ],
+      "groupName": "security/base-image-digest-bumps",
+      "automerge": false,
+      "addLabels": [
+        "security",
+        "base-image"
+      ]
+    },
+    {
+      "description": "Alpine/OpenSSL base images: bump aggressively (they carry the TLS lib).",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "alpine",
+        "node",
+        "python",
+        "nginx"
+      ],
+      "automerge": false
+    }
+  ],
+  "prConcurrentLimit": 2,
+  "prHourlyLimit": 4,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "security"
+    ]
+  },
+  "$comment": "Base-image digest bumps for Rubiaceae65/pi-agent-dashboard (component dashboard). Installed by pq-patch-20261012.",
+  "fileMatch": [
+    "(^|/)(src/docker/Dockerfile)$"
+  ]
+}
