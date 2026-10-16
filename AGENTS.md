@@ -107,3 +107,46 @@ In a worktree, resolve OpenSpec skills from the main repo root, not the checkout
 ## Diagram Style
 
 Use Mermaid (```mermaid blocks), not ASCII box drawings — explore mode, design docs, all artifacts.
+
+
+## Entry points and system role
+_Added 2026-10-16 by repo-entrypoint-docs-20261016; documents develop as of d03fb2bb2 (the repo has no main/master; `develop` is HEAD and the branch the release pins)._
+
+**Department:** software
+
+**Entry points** (as they exist on develop today):
+- `packages/server` (`@blackbelt-technology/pi-dashboard-server`) — server — the dashboard server; bin `pi-dashboard` (`bin/pi-dashboard.mjs`, main `src/cli.ts`).
+- `docker/Dockerfile` + `docker/entrypoint.sh` — image base — the estate container image (`EXPOSE 8000 9999`; `ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]`; `CMD ["start"]`). `start` (the image's own CMD) seeds auth/spawn config on first run, starts the server **detached** and supervised (`supervise-daemon.sh`) and returns — the entrypoint keeps PID 1 alive; `TUNNEL_ENABLED=0` passes `--no-tunnel`.
+- `docker/compose.yml` — compose — the full-stack container: dashboard `:8000` + pi gateway `:9999`, state in the `pi-state` named volume, provider API keys seeded into `auth.json` on first run only. Variants: `compose.dev.yml`, `compose.override.yml.example`, `compose.kroki.yml`, `compose.test.yml`. `docker/up.sh` drives path-identical workspace mounts + first-run pins (`PI_WORKSPACES="/host/a:/host/b" ./up.sh`).
+- `docker/test-up.sh` / `docker/test-down.sh` — scripts — the **disposable isolated test harness** (docker/TESTING.md): runs the exact image `docker-packaging` builds on `:18000`, structurally incapable of colliding with a host dashboard; `harness-audit.sh` audits the harness.
+- root npm scripts (package.json) — `dev`, `build`, `test` (= `test:parallel` vitest + `test:real-process` vitest with a scratch HOME per run), `test:ci-scenarios`, `lint` (tsc --noEmit), `lint:biome`, `quality:changed`, `spec:validate` (openspec), `electron:dev` / `electron:start` / `electron:make` / `electron:build`, `reload` / `reload:check` (`scripts/reload-all.sh`).
+- `packages/electron` — app — the Electron desktop app (`packages/electron/scripts/build-installer.sh`); standalone mode bundles Node.js + pi + dashboard into `~/.pi-dashboard/` (no terminal needed).
+- `tests/` — vitest unit tests + `tests/e2e`, `tests/e2e-electron` — Playwright e2e (`playwright.config.ts`, `playwright.electron.config.ts`).
+- `site/` — the website (upstream content).
+- `.github/workflows/` — upstream CI (ci.yml, publish.yml, nightly.yml, deploy-site.yml, the e2e workflows) — see Superseded.
+
+**Who calls it in the full system:**
+- flux-atelier `rc0005/10-dashboard.yaml` (L3, finca; namespace `estate-rc0005`) → deploys `rubiaceae65/dashboard@sha256:fd4f22a2` (the RC 0005 image, built from **exactly this commit** d03fb2bb per the RC 0005 manifest) with `command: ["start"]`, `PI_DASHBOARD_HOST=0.0.0.0`, `TUNNEL_ENABLED=0`; health `GET :8000 -> 200`; a `Service` exposes `:8000`. Image path: `docker.io/rubiaceae65/dashboard` → Talos machine-config mirror → in-cluster zot, seeded one-way from ag-zot.
+- The RC 0005 release manifest (atelier repo, `release/manifests/rc/0005/three-machines.json`, component `dashboard`) → kind `compose`, image `ghcr.io/rubiaceae65/dashboard@fd4f22a2` (one-way-import provenance; see Superseded), `command: ["start"]`, port 8000, role `brain` → the "atelier" machine (Brain). RC 0005's note records the earlier git-checkout install model (operator places a checkout and runs nothing from it) being **replaced by the estate image**.
+- Humans and agents → the dashboard UI/REST: it is the standing pi/prime-agent session dashboard (the Brain's, at `:8000` on the tailnet per the workshop's standing briefs) — spawn parallel pi sessions, watch reasoning live, send prompts, abort runs.
+- Rubiaceae65/release → pins pi-agent-dashboard as a submodule (`components/pi-agent-dashboard` @ d03fb2bb, the RC pin — the release pins `develop`, no main exists).
+
+**What it calls:**
+- pi (pi-mono) agent sessions → the pi gateway (`:9999`) and the spawn strategy (`tmux` default or `headless`); the dashboard is the control surface for pi sessions (it works only with pi; "Oh My Pi is not supported").
+- LLM providers → via `auth.json` / OAuth (Anthropic/OpenAI/Gemini keys are deployment inputs, seeded on first run only — the `pi-state` volume wins afterwards; the RC air-gapped deployment seeds none and adds providers in the UI).
+- The zrok tunnel (optional; `TUNNEL_ENABLED=1` by default — **disabled in the RC air-gapped deployment** with `TUNNEL_ENABLED=0`: "an air-gapped venue has no tunnel target, and a tunnel attempt is an egress attempt").
+
+**Run / test in isolation:**
+- `npm run test` — vitest (`test:parallel` + `test:real-process`, each with a scratch `HOME`); `npm run lint` (tsc --noEmit) and `npm run lint:biome`. Prerequisites: node + npm workspaces (the repo also carries a pnpm lockfile).
+- Playwright e2e: `tests/e2e` and `tests/e2e-electron` (`playwright.config.ts` / `playwright.electron.config.ts`).
+- The docker test harness: from the project you want to test, `docker/test-up.sh` — builds + runs the exact `docker-packaging` image attached on `:18000`; manual browser QA (e.g. `agent-browser open http://localhost:18000`); tear down with `docker/test-down.sh` (discards all state). No new image build — a compose overlay + entrypoint wrapper on `compose.yml`.
+- The plain compose stack: `cd docker && cp .env.example .env && docker compose up -d --build` → dashboard at `http://localhost:8000`.
+
+**Deployment ways (software repos):** _(owner steer 10-16 — both ways where they exist)_
+- k8s way: flux-atelier `rc0005/10-dashboard.yaml` — Deployment + Service on finca (namespace `estate-rc0005`, `:8000`, image by digest from the in-cluster zot).
+- plain-machine compose way: `docker/compose.yml` via `docker/up.sh` — the RC 0005 install method on the "atelier" machine (the Brain); the standing session dashboard at `:8000` is the current dev/ops form.
+- Placement note: the RC 0005 three-machines placement (dashboard on the "atelier" machine) is _superseded by the owner ruling of 2026-10-16: in this deployment release only the BACKUP machine is Puppet-managed; all other services run on finca (Talos) via Flux_ — the finca deployment (above) is the current RC 0005 on-finca form; placement may change in later releases.
+
+**Superseded:**
+- The upstream (BlackBeltTechnology) release surface — the `.github/workflows` CI/publish/nightly/deploy-site workflows, the npm package publish, the GitHub Releases download path and the README badges: this is the upstream project's CI, **not the estate release path**. The estate RC 0005 image is built from this repo's `docker/Dockerfile` at the pinned commit, signed into `/projects/releases/rc-0005/images/` (the `source: ghcr.io/rubiaceae65/dashboard@fd4f22a2` field in the release's `images.lock.json` is the one-way-import provenance, not a GitHub release); the RC release has NOTHING on GitHub (no Actions, no ghcr, no releases).
+- The RC 0003/0004-era git-checkout install model (operator clones at the pinned commit and "runs nothing from it") — superseded by the estate image in RC 0005 (2026-10-11), per the RC 0005 manifest note.
