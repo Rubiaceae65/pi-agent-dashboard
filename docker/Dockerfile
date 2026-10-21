@@ -110,10 +110,26 @@ FROM base AS app
 RUN if getent passwd 1000 >/dev/null; then userdel -r "$(getent passwd 1000 | cut -d: -f1)"; fi \
  && useradd --create-home --uid 1000 --shell /bin/bash pi
 
+# Global installs have no lockfile, so npm resolves their TRANSITIVE deps
+# against the live registry at build time. Build 2026-10-21 19:03Z failed with
+# `ETARGET No matching version found for @aws-sdk/types@^3.975.0`: a dependent
+# AWS SDK package had been published requiring types 3.975.0, which itself
+# was published only at 19:05:32Z (npm view @aws-sdk/types time). NPM_BEFORE
+# pins the resolution to the registry as it was at NPM_BEFORE (npm
+# `--before`), so the same commit resolves the same tree and never a half-
+# published release. Raise it deliberately, together with the pins below.
+ARG NPM_BEFORE=2026-10-21T00:00:00Z
+
 # 1.4 Global pi coding agent + openspec (spawned/probed by the dashboard).
 # Install must be fatal; the version probes stay non-fatal (grouped so a
 # non-zero `--version` can't mask an `npm install -g` failure).
-RUN npm install -g @earendil-works/pi-coding-agent@0.86.1 openspec \
+# openspec is @fission-ai/openspec at the version the workspace lockfile uses
+# (packages/server, packages/extension: 1.11.0). The bare npm name `openspec`
+# is an unrelated 2019 placeholder (0.0.0, no bin): the build log showed
+# `openspec: not found`.
+# Pins (version, npm publish date): pi-coding-agent 0.86.1 (2026-09-20),
+# @fission-ai/openspec 1.11.0 (2026-08-26).
+RUN npm install -g --before="${NPM_BEFORE}" @earendil-works/pi-coding-agent@0.86.1 @fission-ai/openspec@1.11.0 \
  && { pi --version || true; } \
  && { openspec --version || true; }
 
@@ -130,7 +146,9 @@ ARG PI_ANTHROPIC_MESSAGES_VERSION=0.3.4
 # the collapse scenarios (P2/F4) have no workload and pass vacuously.
 # See change: collapse-superseded-tool-execution-updates.
 ARG PI_DASHBOARD_SUBAGENTS_VERSION=0.2.4
-RUN npm install -g \
+# Pins (version, npm publish date): pi-flows 0.3.2 (2026-07-01), pi-anthropic-messages 0.3.4
+# (2026-06-18), pi-dashboard-subagents 0.2.4 (2026-08-10); resolved as of NPM_BEFORE.
+RUN npm install -g --before="${NPM_BEFORE}" \
       "@blackbelt-technology/pi-flows@${PI_FLOWS_VERSION}" \
       "@blackbelt-technology/pi-anthropic-messages@${PI_ANTHROPIC_MESSAGES_VERSION}" \
       "@blackbelt-technology/pi-dashboard-subagents@${PI_DASHBOARD_SUBAGENTS_VERSION}" \

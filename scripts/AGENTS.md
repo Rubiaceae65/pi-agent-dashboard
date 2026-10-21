@@ -38,6 +38,7 @@ Files in this directory. One row per file. Non-source area (migrated from `docs/
 | `__tests__/test-up-port-derivation.test.mjs` | Vitest tests for parallel-worktree test-harness port/project derivation. → see `__tests__/test-up-port-derivation.test.mjs.AGENTS.md` |
 | `_windows-introspection-probe.ts` | Probe child for Windows introspection smoke. Imports real `isVirtualMachine` + `defaultGetCmdline` (relative… → see `_windows-introspection-probe.ts.AGENTS.md` |
 | `build.sh` | Type-check + build dashboard. Flags: --check-only (tsc --noEmit only), --client-only (Vite build only). Auto-runs npm install if node_modules absent. |
+| `build-image.sh` | The one image build command: `scripts/build-image.sh [build [<ref>]]` refuses a dirty tree, builds `docker/Dockerfile` as `pi-dashboard:local` (the `docker/compose.yml` image) with OCI labels revision (git HEAD) / source / version (package.json). |
 | `__tests__/verify-published-imports.test.mjs` | Tests for `verify-published-imports.mjs`. Fixtures built in `mkdtemp` OUTSIDE the repo and the checker driven… → see `__tests__/verify-published-imports.test.mjs.AGENTS.md` |
 | `__tests__/patch-vendor-specifiers.test.mjs` | Tests for `patch-vendor-specifiers.mjs` (E6: 4-specifier rewrite, byte-identical tree across run counts 1/2/3, §4(b) header exactly once, unmapped + stale-notice failures). See change: fix-browser-plugin-vendor-specifier-resolution. |
 | `__tests__/root-packaging.test.mjs` | ci-level root tarball exclusion check (E14/E15). → see `__tests__/root-packaging.test.mjs.AGENTS.md` |
