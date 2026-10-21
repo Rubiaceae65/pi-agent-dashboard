@@ -15,3 +15,9 @@ dist
 # See change: add-knip-dead-code-oracle.
 !.pi/skills
 openspec
+
+# scripts/build-image.sh: its output/evidence are not build inputs, and the script itself
+# stays out of the image so /app/scripts matches the running build.
+out/
+runs/
+scripts/build-image.sh

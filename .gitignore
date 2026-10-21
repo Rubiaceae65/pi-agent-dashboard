@@ -80,3 +80,6 @@ SHIP_IT_BLOCKED.md
 # here rather than in `.git/info/exclude`, which is local-only and therefore
 # hid the problem on the authoring machine while CI still saw it.
 .pi/skills/manage-flows/
+
+# scripts/build-image.sh output (the OCI archive, digest, SBOM, build log)
+/out/

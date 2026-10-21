@@ -861,6 +861,22 @@ packages/
 
 ---
 
+## Building the image
+
+The release image `rubiaceae65/dashboard` is built from ONE commit with ONE command (clean tree required):
+
+```sh
+scripts/build-image.sh push dev-<N>     # or: scripts/build-image.sh build   (no push)
+```
+
+It runs `docker buildx build` on `release-image/dashboard/Dockerfile.release` (every base image pinned by digest),
+labels the image `org.opencontainers.image.revision=<HEAD sha>` / `org.opencontainers.image.source`,
+exports a reproducible OCI archive (`SOURCE_DATE_EPOCH` = commit time, `rewrite-timestamp=true`) to
+`out/dashboard.oci.tar`, writes the manifest digest to `out/dashboard.digest` and an SPDX SBOM to
+`out/dashboard.sbom.json`, and with `push` copies the archive as-is to
+`${REGISTRY:-10.99.227.241:32500}/rubiaceae65/dashboard:<tag>` and checks the pushed digest.
+Needs git, docker + buildx, skopeo, syft. Build evidence lives under `runs/`.
+
 ## Building the Electron app
 
 > **Prerequisites:** Node.js 22.12+; platform-specific tools handled by Electron Forge automatically.

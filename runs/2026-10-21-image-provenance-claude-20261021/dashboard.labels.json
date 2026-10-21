@@ -1,0 +1,5 @@
+{
+  "org.opencontainers.image.revision": "2c85f50c500cfde37d69ae6b9114ac18481bda42",
+  "org.opencontainers.image.source": "https://github.com/Rubiaceae65/pi-agent-dashboard",
+  "org.opencontainers.image.title": "dashboard"
+}

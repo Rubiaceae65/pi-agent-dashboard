@@ -1,0 +1,13 @@
+image:        rubiaceae65/dashboard:dev-1 @ sha256:feb1eb143a4f48da69225086a9f4edfe13f524e303cde7479d5e88c9dede202d  (registry 10.99.227.241:32500)
+built commit: 2c85f50c500cfde37d69ae6b9114ac18481bda42  (clean worktree /projects/image-provenance-claude-20261021/repos/build-dashboard, sandbox imgprov-build-20261021)
+              NOT on the remote: the push of image-build-20261021 was refused by the pre-push secret gate (README.md:413,
+              the pre-existing placeholder 'pi-proxy-<your-proxy-key>', flagged because the edited README blob is re-scanned whole).
+command:      TMPDIR=<disk dir> scripts/build-image.sh push dev-1  (attempt 1 with TMPDIR=/tmp tmpfs: syft OOM-killed, 8 GB sandbox)
+labels:       {"org.opencontainers.image.revision":"2c85f50c500cfde37d69ae6b9114ac18481bda42","org.opencontainers.image.source":"https://github.com/Rubiaceae65/pi-agent-dashboard","org.opencontainers.image.title":"dashboard"}
+rebuild:      NO_CACHE=1 scripts/build-image.sh build -> sha256:f7239ac0d1743f999fef0634f542da7acc7c9113acdbe548cd3f6652c4d777dc  identical=NO
+              differing layers: apt-get install (base 2/6), both npm install -g (app 2-3, openspec unpinned), corepack enable,
+              pnpm install + build (app 20) -- network installs and their caches/logs are not byte-reproducible.
+              syft was OOM-killed again after the rebuild (the build itself succeeded).
+files:        dashboard.build.log, dashboard.rebuild-no-cache.build.log, dashboard.digest, dashboard.config.json, dashboard.labels.json, dashboard.sbom.json.gz
+vs running (finca sha256:fd4f22a2…, RC 0005): same code (d03fb2bb..12fca25d differs only in release-image/dashboard/);
+              base node:24.21.0-bookworm-slim@sha256:d6aa754f… whose layers equal the running image's base layers.
