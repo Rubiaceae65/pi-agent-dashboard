@@ -1,0 +1,148 @@
+# dashboard rev=2c85f50c500cfde37d69ae6b9114ac18481bda42 SOURCE_DATE_EPOCH=1792600026 no_cache=0 2026-10-21T16:45:33Z
+#0 building with "image-build" instance using docker-container driver
+
+#1 [internal] load build definition from Dockerfile.release
+#1 transferring dockerfile: 10.49kB done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+#2 DONE 0.3s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 885B done
+#3 DONE 0.1s
+
+#4 [internal] load build context
+#4 DONE 0.0s
+
+#5 [base 1/6] FROM docker.io/library/node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+#5 resolve docker.io/library/node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 0.1s done
+#5 DONE 0.1s
+
+#4 [internal] load build context
+#4 transferring context: 1.13MB 0.2s done
+#4 DONE 0.3s
+
+#6 [app  7/21] COPY tsconfig.base.json tsconfig.json ./
+#6 CACHED
+
+#7 [app 17/21] COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+#7 CACHED
+
+#8 [base 2/6] RUN apt-get update  && apt-get install -y --no-install-recommends       tmux       jq       git       curl       ca-certificates       ripgrep       fd-find       poppler-utils       build-essential       python3  && rm -rf /var/lib/apt/lists/*
+#8 CACHED
+
+#9 [app  1/21] RUN if getent passwd 1000 >/dev/null; then userdel -r "$(getent passwd 1000 | cut -d: -f1)"; fi  && useradd --create-home --uid 1000 --shell /bin/bash pi
+#9 CACHED
+
+#10 [app  6/21] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+#10 CACHED
+
+#11 [app  9/21] COPY patches ./patches
+#11 CACHED
+
+#12 [app 11/21] COPY qa ./qa
+#12 CACHED
+
+#13 [base 3/6] RUN ln -s "$(command -v fdfind)" /usr/local/bin/fd || true
+#13 CACHED
+
+#14 [base 4/6] RUN set -eux;     deb_arch="$(dpkg --print-architecture)";     case "${deb_arch}" in       amd64) zrok_arch="amd64" ;;       arm64) zrok_arch="arm64" ;;       armhf) zrok_arch="armv7" ;;       *) echo "unsupported arch: ${deb_arch}" >&2; exit 1 ;;     esac;     asset="zrok_2.0.4_linux_${zrok_arch}.tar.gz";     base="https://github.com/openziti/zrok/releases/download/v2.0.4";     curl -fsSL -o "/tmp/${asset}" "${base}/${asset}";     curl -fsSL -o /tmp/zrok-checksums.sha256 "${base}/checksums.sha256.txt";     ( cd /tmp && grep -E "[ /]${asset}$" zrok-checksums.sha256 | sha256sum -c - );     tar -xzf "/tmp/${asset}" -C /usr/local/bin zrok2;     ln -sf zrok2 /usr/local/bin/zrok;     rm "/tmp/${asset}" /tmp/zrok-checksums.sha256;     zrok2 version;     zrok version
+#14 CACHED
+
+#15 [app  2/21] RUN npm install -g @earendil-works/pi-coding-agent@0.86.1 openspec  && { pi --version || true; }  && { openspec --version || true; }
+#15 CACHED
+
+#16 [app 16/21] COPY .pi/skills ./.pi/skills
+#16 CACHED
+
+#17 [base 6/6] RUN set -eux;     deb_arch="$(dpkg --print-architecture)";     case "${deb_arch}" in       amd64) jj_arch="x86_64-unknown-linux-musl" ;;       arm64) jj_arch="aarch64-unknown-linux-musl" ;;       *) echo "unsupported arch: ${deb_arch}" >&2; exit 1 ;;     esac;     asset="jj-v0.24.0-${jj_arch}.tar.gz";     base="https://github.com/jj-vcs/jj/releases/download/v0.24.0";     curl -fsSL -o "/tmp/${asset}" "${base}/${asset}";     tar -xzf "/tmp/${asset}" -C /usr/local/bin ./jj;     rm "/tmp/${asset}";     jj --version
+#17 CACHED
+
+#18 [base 5/6] RUN set -eux;     deb_arch="$(dpkg --print-architecture)";     case "${deb_arch}" in       amd64) gh_arch="amd64" ;;       arm64) gh_arch="arm64" ;;       armhf) gh_arch="armv6" ;;       *) echo "unsupported arch: ${deb_arch}" >&2; exit 1 ;;     esac;     asset="gh_2.62.0_linux_${gh_arch}.tar.gz";     base="https://github.com/cli/cli/releases/download/v2.62.0";     curl -fsSL -o "/tmp/${asset}" "${base}/${asset}";     curl -fsSL -o /tmp/gh-checksums.txt "${base}/gh_2.62.0_checksums.txt";     ( cd /tmp && grep -E "[ /]${asset}$" gh-checksums.txt | sha256sum -c - );     rm /tmp/gh-checksums.txt;     tar -xzf "/tmp/${asset}" -C /tmp;     install -m 0755 "/tmp/gh_2.62.0_linux_${gh_arch}/bin/gh" /usr/local/bin/gh;     rm -rf "/tmp/${asset}" "/tmp/gh_2.62.0_linux_${gh_arch}";     gh --version
+#18 CACHED
+
+#19 [app 20/21] RUN pnpm install --frozen-lockfile  && pnpm run build  && npm link  && apt-get purge -y --auto-remove build-essential python3  && rm -rf /var/lib/apt/lists/*  && chown -R pi:pi /app
+#19 CACHED
+
+#20 [app 15/21] COPY .github ./.github
+#20 CACHED
+
+#21 [app  5/21] WORKDIR /app
+#21 CACHED
+
+#22 [app 12/21] COPY knip.json knip-baseline.json playwright.config.ts ./
+#22 CACHED
+
+#23 [app 10/21] COPY packages ./packages
+#23 CACHED
+
+#24 [app  4/21] RUN corepack enable
+#24 CACHED
+
+#25 [app 18/21] COPY --chmod=0755 docker/supervise-daemon.sh /usr/local/bin/supervise-daemon.sh
+#25 CACHED
+
+#26 [app 14/21] COPY public ./public
+#26 CACHED
+
+#27 [app 13/21] COPY tests ./tests
+#27 CACHED
+
+#28 [app  8/21] COPY scripts ./scripts
+#28 CACHED
+
+#29 [app  3/21] RUN npm install -g       "@blackbelt-technology/pi-flows@0.3.2"       "@blackbelt-technology/pi-anthropic-messages@0.3.4"       "@blackbelt-technology/pi-dashboard-subagents@0.2.4"  && ls -d /usr/local/lib/node_modules/@blackbelt-technology/pi-flows          /usr/local/lib/node_modules/@blackbelt-technology/pi-anthropic-messages          /usr/local/lib/node_modules/@blackbelt-technology/pi-dashboard-subagents
+#29 CACHED
+
+#30 [app 19/21] COPY docker/scripts ./docker/scripts
+#30 CACHED
+
+#31 [app 21/21] RUN mkdir -p /home/pi/.pi /home/pi/.zrok2 && chown pi:pi /home/pi/.pi /home/pi/.zrok2
+#31 CACHED
+
+#32 exporting to oci image format
+#32 exporting layers done
+#32 rewriting layers with source-date-epoch 1792600026 (2026-10-21 16:27:06 +0000 UTC)
+#32 rewriting layers with source-date-epoch 1792600026 (2026-10-21 16:27:06 +0000 UTC) 86.9s done
+#32 exporting manifest sha256:feb1eb143a4f48da69225086a9f4edfe13f524e303cde7479d5e88c9dede202d 0.1s done
+#32 exporting config sha256:78f285f8dc799a530118e014751b9ba946625d6eaa11ebd1e0c4a54c3152b6fb 0.1s done
+#32 sending tarball
+#32 sending tarball 7.8s done
+#32 DONE 94.8s
+built rubiaceae65/dashboard rev=2c85f50c500cfde37d69ae6b9114ac18481bda42 digest=sha256:feb1eb143a4f48da69225086a9f4edfe13f524e303cde7479d5e88c9dede202d
+Getting image source signatures
+Copying blob sha256:7fd1ebe418b5079d4aa36f416af9b143d127bc75b0155d71cb5fd559b5e04d39
+Copying blob sha256:517d640e32835287653c4b15eb5d9f6bcf48e103baea4f7e29bac937002f649b
+Copying blob sha256:11ffcabe0f772f0f1a9c80b4b290b5ec0de54f11c671f0fa10e5844f9b52d17a
+Copying blob sha256:1a0cf4b1ffc8dd659bb8c6e90471bc8fec24620e4fdb68bb2b6faa56154ae146
+Copying blob sha256:08489011619dfda982191cb9cc0418dc48ea3b1341588aeef534e4db0ab4d3d0
+Copying blob sha256:9998cd3c6df8ac8ddb5e13ab6feabb468841448ab5eefbaaac55bbb7e8e35df0
+Copying blob sha256:dd7259ea5ee021ce2bc99814932cc99737a1351a82c836bac84347f15a3cc95f
+Copying blob sha256:0cb980c2d663eba73d5fe51f3351dbf0718cc01b4e628c363687500135c802c7
+Copying blob sha256:6458db3e1cb86997a2fa0ff9855b9e8dbde096d4c0fc7dcb1385d0f595ae2682
+Copying blob sha256:0b370cdb06223f0f1f77bb1661f3ee77a23bf6b91baa619e8054a7c074165973
+Copying blob sha256:857c532bc9a9c67c26993908c245e4b4ad18e03a2f84c8a6d20051256fdc8db8
+Copying blob sha256:097e162f6c634234b3f5392c03601faa4e49f2d80d50cdaaf0cd77a696fd80c9
+Copying blob sha256:b7c97fc7ba2648bb0579993d452b1c6577361345923cc0bcdbaf4b1fbbc5b60d
+Copying blob sha256:630dd04d48768f96a72a2ff645eb9b790be6701a4b29ed83837f970cc06150ef
+Copying blob sha256:fd3d98ce71a353ffe4487853c94f01a689347c894fc8b27145c1a34492b7ae9f
+Copying blob sha256:e3461aa84dc01ad4d502fcfbbb081cb9238d68b77fa4e467b2388836dd85409d
+Copying blob sha256:3aba412a9b1709e97d71188ba1713bd7bafab402c53da3c5ae1f8fe472d37d98
+Copying blob sha256:e9e2d492d8ed24f9b4c22ca44416d83ef7f4a379a7c8d1542ff25ad0d684bc88
+Copying blob sha256:f72a01d9771cb2b01fd87fedf5c229830e2152dbb32c36d746d043ea177c6cf8
+Copying blob sha256:fd58acc0a77e8f65fb802fae60b29ed51baa3a2f0bdc1714622161c959f774df
+Copying blob sha256:b5e87b93dd002e9cece5effb92b53d49a6938691b1e2078d1e46bfca32e35aa2
+Copying blob sha256:1f1ff970c815f8747971537820ddf8c8e7f9a7cd7f9a25a0d906645125ec3620
+Copying blob sha256:000b44595814682b627e6944187312678c7303bd4e6302b0aa583638f28ded9c
+Copying blob sha256:2fa512be90a1372e40788742f6af438ecd66baeaaced8ed7d43bbae07bda8ae5
+Copying blob sha256:91abaefb99793ef4a28ae3e670934e93ddf833fc70b2fed442b018265e471d4b
+Copying blob sha256:963a5d3a750131c52defa4e4ad8f146bc6c0262a49f792e6f5418256e23fca54
+Copying blob sha256:6daaf259bce6a4a1e9d9d1154395bfec7260ebcdcd496ed44ad2af76bd921657
+Copying blob sha256:df43d2f437f64eb6a7a97fd8eb6074c8b628ed93d8a552763c6a3f9a33ad27bd
+Copying blob sha256:5ff946751d7fa0a78bfa44ddbaf223dd142dc0b7bb1ecb39cc7b918db750bc38
+Copying blob sha256:d3c7e900cc086efbac6722a0c63caccced0558a0ccf9efa7bc1bfdec46120dd8
+Copying blob sha256:7dcd4b7d86f1c152019cdfe78eea9968cc280ef9d003c211a6a82dbbccd1d88d
+Copying config sha256:78f285f8dc799a530118e014751b9ba946625d6eaa11ebd1e0c4a54c3152b6fb
+Writing manifest to image destination
+pushed 10.99.227.241:32500/rubiaceae65/dashboard:dev-1 want=sha256:feb1eb143a4f48da69225086a9f4edfe13f524e303cde7479d5e88c9dede202d got=sha256:feb1eb143a4f48da69225086a9f4edfe13f524e303cde7479d5e88c9dede202d

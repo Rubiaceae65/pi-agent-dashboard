@@ -1,0 +1,331 @@
+{
+    "created": "2026-10-21T16:27:06Z",
+    "architecture": "amd64",
+    "os": "linux",
+    "config": {
+        "User": "pi",
+        "ExposedPorts": {
+            "8000/tcp": {},
+            "9999/tcp": {}
+        },
+        "Env": [
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "NODE_VERSION=24.21.0",
+            "YARN_VERSION=1.22.22",
+            "DEBIAN_FRONTEND=noninteractive",
+            "HOME=/home/pi"
+        ],
+        "Entrypoint": [
+            "/usr/local/bin/entrypoint.sh"
+        ],
+        "Cmd": [
+            "start"
+        ],
+        "Volumes": {
+            "/home/pi/.pi": {},
+            "/home/pi/.zrok2": {}
+        },
+        "WorkingDir": "/app",
+        "Labels": {
+            "org.opencontainers.image.revision": "2c85f50c500cfde37d69ae6b9114ac18481bda42",
+            "org.opencontainers.image.source": "https://github.com/Rubiaceae65/pi-agent-dashboard",
+            "org.opencontainers.image.title": "dashboard"
+        },
+        "ArgsEscaped": true
+    },
+    "rootfs": {
+        "type": "layers",
+        "diff_ids": [
+            "sha256:e58989146fcec76699871403b9897b5c014af1ccd85f5a9300a215e7975525d7",
+            "sha256:a52fce3e2e53c15bee62149c2a83480bfc3000e19b253dba304220e3d487582f",
+            "sha256:65d71716d250882cedd073ea8e6ab52eb8ce7372fb9eed886775d91dbf9b0f74",
+            "sha256:bdfbfbb03dafc1b269c0668c632ae06c04bff6bc9ae624c8a9cbb3ecb4ad1d3c",
+            "sha256:b6a146dc1aed9a3193cadd3aa94373029d72d93c212e59a42c5d0194b2157ab5",
+            "sha256:4102043a71ab6c5cd9ed34151b633d6b96afab7d9d753cc880c62df466154874",
+            "sha256:714b54019c021fb7c144a37599ccd875a15d2e3c74817952cd6ce5c967beb63b",
+            "sha256:9874c65be710c3b834947c05434123c8d85bf9ffe36a60d0608cea56ba6ccb43",
+            "sha256:14ec68d13d9dff03e7ac6b279cbd465aea94491268154f42457c98655207f8d4",
+            "sha256:1dcd54c3223b7cf2fcb2f21ee6f29b861f7c0f65f56f93e5fec272a762f0fe85",
+            "sha256:8533460b6cb43eb5a78e2779e93468c0493b78ed62cb967ca8a0a684a80d1f70",
+            "sha256:343dcd6e922fdc0feb70db1a6e774b9f2743dd955febc0346f51c3cfdc917a52",
+            "sha256:7d8419c79d57ba6a0e39f7d910cb58447317e15e183bacdd40bdec2f1d09aca9",
+            "sha256:2ad265c9c9cf02bfd15dd40ac093979f163a744bbad2c36057212f61885ca92a",
+            "sha256:5cbed8d287316f0bf71ec1c60b8f7f3c2781263a33721eedff94d46cb76a2994",
+            "sha256:5092b431e35e2029ff27122623d3cd1d3113b6631f59300e9967ea3ced747544",
+            "sha256:3ee92e241563bc16b4be4932f2ba66182f66626d9d786a351253d11a4e99ff13",
+            "sha256:7846ad3e2c0eff178936132b0cee90f7b86d7fb63b319b0016f7aece35356a52",
+            "sha256:47581d57976dd00e315e50ec8c10ed7cab3d4fbd1dc6620c9da2d7795e4062f2",
+            "sha256:b63da5a37c99deac0affa5812f143e113a399af5eab5a5ad0b61458fce83bac5",
+            "sha256:2a68f4b81d4d57b3ad2a1915ee9b4beb37fe036458c12c8cd256b6a91270be99",
+            "sha256:7cd59f6c25127784f7ecacca34165224f1d97d0f2fba393f361fddf5bfc50a61",
+            "sha256:17782cf2022710013bf862f501df14e2b6fc20fde4d77eedddb1cddefb812ce6",
+            "sha256:568167dee5b3cfb5cb0f0bfdcc8f74ac22c619bc7a2b0fd98b4a0af81ad7bf8e",
+            "sha256:922569716fd58a861b7edbed06ddfaaa754e5892fbee5ebbc7fc9bb2e824d0bd",
+            "sha256:f0c28c80ffbcea5f9edfae5872abc4b9afcdb7c5809ec4bc52d022a63c339759",
+            "sha256:567f633aad1ab98ea71345fcc796750aa49d0d5bad3f7ab8743f4062c0cc38c0",
+            "sha256:67ca457b2c494f0f918c0ae1100f49369a1c4dc77a725fdc6eaa53b2e07dfeae",
+            "sha256:2fa27b628f0ed7578e76d993372fce47a1089c99765c73ff4c24512b48773cad",
+            "sha256:eafedda886fe8cb4312d24a65ba6af0b0f6d85aa0e76c3768694ab985d19d374",
+            "sha256:55b4864361540512048934c019b50a387f614c05d93bfb4058d2f88a3a563333"
+        ]
+    },
+    "history": [
+        {
+            "created": "2026-10-05T00:00:00Z",
+            "created_by": "# debian.sh --arch 'amd64' out/ 'bookworm' '@1791158400'",
+            "comment": "debuerreotype 0.17"
+        },
+        {
+            "created": "2026-10-06T01:44:59.120518416Z",
+            "created_by": "RUN /bin/sh -c groupadd --gid 1000 node   \u0026\u0026 useradd --uid 1000 --gid node --shell /bin/bash --create-home node # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-06T01:45:19.005711078Z",
+            "created_by": "ENV NODE_VERSION=24.21.0",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-06T01:45:19.005711078Z",
+            "created_by": "RUN /bin/sh -c ARCH= OPENSSL_ARCH= \u0026\u0026 dpkgArch=\"$(dpkg --print-architecture)\"     \u0026\u0026 case \"${dpkgArch##*-}\" in       amd64) ARCH='x64' OPENSSL_ARCH='linux-x86_64';;       ppc64el) ARCH='ppc64le' OPENSSL_ARCH='linux-ppc64le';;       arm64) ARCH='arm64' OPENSSL_ARCH='linux-aarch64';;       *) echo \"unsupported architecture\"; exit 1 ;;     esac     \u0026\u0026 set -ex     \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y ca-certificates curl wget gnupg dirmngr xz-utils libatomic1 --no-install-recommends     \u0026\u0026 rm -rf /var/lib/apt/lists/*     \u0026\u0026 export GNUPGHOME=\"$(mktemp -d)\"     \u0026\u0026 for key in       5BE8A3F6C8A5C01D106C0AD820B1A390B168D356       DD792F5973C6DE52C432CBDAC77ABFA00DDBF2B7       CC68F5A3106FF448322E48ED27F5E38D5B0A215F       890C08DB8579162FEE0DF9DB8BEAB4DFCF555EF4       C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C       108F52B48DB57BB0CC439B2997B01419BD92F80A       655F3B5C1FB3FA8D1A0CA6BDE4A7D232B936D2FD       A363A499291CBBC940DD62E41F10027AF002F8B0     ; do       { gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$key\" \u0026\u0026 gpg --batch --fingerprint \"$key\"; } ||       { gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \"$key\" \u0026\u0026 gpg --batch --fingerprint \"$key\"; } ;     done     \u0026\u0026 curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$ARCH.tar.xz\"     \u0026\u0026 curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc\"     \u0026\u0026 gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc     \u0026\u0026 gpgconf --kill all     \u0026\u0026 rm -rf \"$GNUPGHOME\"     \u0026\u0026 grep \" node-v$NODE_VERSION-linux-$ARCH.tar.xz\\$\" SHASUMS256.txt | sha256sum -c -     \u0026\u0026 tar -xJf \"node-v$NODE_VERSION-linux-$ARCH.tar.xz\" -C /usr/local --strip-components=1 --no-same-owner     \u0026\u0026 rm \"node-v$NODE_VERSION-linux-$ARCH.tar.xz\" SHASUMS256.txt.asc SHASUMS256.txt     \u0026\u0026 find /usr/local/include/node/openssl/archs -mindepth 1 -maxdepth 1 ! -name \"$OPENSSL_ARCH\" -exec rm -rf {} \\;     \u0026\u0026 apt-mark auto '.*' \u003e /dev/null     \u0026\u0026 find /usr/local -type f -executable -exec ldd '{}' ';'       | awk '/=\u003e/ { so = $(NF-1); if (index(so, \"/usr/local/\") == 1) { next }; gsub(\"^/(usr/)?\", \"\", so); print so }'       | sort -u       | xargs -r dpkg-query --search       | cut -d: -f1       | sort -u       | xargs -r apt-mark manual     \u0026\u0026 apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false     \u0026\u0026 ln -s /usr/local/bin/node /usr/local/bin/nodejs     \u0026\u0026 node --version     \u0026\u0026 npm --version     \u0026\u0026 rm -rf /tmp/* # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-06T01:45:19.005711078Z",
+            "created_by": "ENV YARN_VERSION=1.22.22",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-06T01:45:32.345784089Z",
+            "created_by": "RUN /bin/sh -c set -ex   \u0026\u0026 savedAptMark=\"$(apt-mark showmanual)\"   \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y ca-certificates curl wget gnupg dirmngr --no-install-recommends   \u0026\u0026 rm -rf /var/lib/apt/lists/*   \u0026\u0026 export GNUPGHOME=\"$(mktemp -d)\"   \u0026\u0026 for key in     6A010C5166006599AA17F08146C2130DFD2497F5   ; do     { gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$key\" \u0026\u0026 gpg --batch --fingerprint \"$key\"; } ||     { gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \"$key\" \u0026\u0026 gpg --batch --fingerprint \"$key\"; } ;   done   \u0026\u0026 curl -fsSLO --compressed \"https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz\"   \u0026\u0026 curl -fsSLO --compressed \"https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz.asc\"   \u0026\u0026 gpg --batch --verify yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz   \u0026\u0026 gpgconf --kill all   \u0026\u0026 rm -rf \"$GNUPGHOME\"   \u0026\u0026 mkdir -p /opt   \u0026\u0026 tar -xzf yarn-v$YARN_VERSION.tar.gz -C /opt/   \u0026\u0026 ln -s /opt/yarn-v$YARN_VERSION/bin/yarn /usr/local/bin/yarn   \u0026\u0026 ln -s /opt/yarn-v$YARN_VERSION/bin/yarnpkg /usr/local/bin/yarnpkg   \u0026\u0026 rm yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz   \u0026\u0026 apt-mark auto '.*' \u003e /dev/null   \u0026\u0026 { [ -z \"$savedAptMark\" ] || apt-mark manual $savedAptMark \u003e /dev/null; }   \u0026\u0026 find /usr/local -type f -executable -exec ldd '{}' ';'     | awk '/=\u003e/ { so = $(NF-1); if (index(so, \"/usr/local/\") == 1) { next }; gsub(\"^/(usr/)?\", \"\", so); print so }'     | sort -u     | xargs -r dpkg-query --search     | cut -d: -f1     | sort -u     | xargs -r apt-mark manual   \u0026\u0026 apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false   \u0026\u0026 yarn --version   \u0026\u0026 rm -rf /tmp/* # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-06T01:45:32.370525756Z",
+            "created_by": "COPY docker-entrypoint.sh /usr/local/bin/ # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-06T01:45:32.370525756Z",
+            "created_by": "ENTRYPOINT [\"docker-entrypoint.sh\"]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-06T01:45:32.370525756Z",
+            "created_by": "CMD [\"node\"]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ARG ZROK_VERSION=2.0.4",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ARG GH_VERSION=2.62.0",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ARG JJ_VERSION=0.24.0",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ENV DEBIAN_FRONTEND=noninteractive",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |3 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 /bin/sh -c apt-get update  \u0026\u0026 apt-get install -y --no-install-recommends       tmux       jq       git       curl       ca-certificates       ripgrep       fd-find       poppler-utils       build-essential       python3  \u0026\u0026 rm -rf /var/lib/apt/lists/* # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |3 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 /bin/sh -c ln -s \"$(command -v fdfind)\" /usr/local/bin/fd || true # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |3 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 /bin/sh -c set -eux;     deb_arch=\"$(dpkg --print-architecture)\";     case \"${deb_arch}\" in       amd64) zrok_arch=\"amd64\" ;;       arm64) zrok_arch=\"arm64\" ;;       armhf) zrok_arch=\"armv7\" ;;       *) echo \"unsupported arch: ${deb_arch}\" \u003e\u00262; exit 1 ;;     esac;     asset=\"zrok_${ZROK_VERSION}_linux_${zrok_arch}.tar.gz\";     base=\"https://github.com/openziti/zrok/releases/download/v${ZROK_VERSION}\";     curl -fsSL -o \"/tmp/${asset}\" \"${base}/${asset}\";     curl -fsSL -o /tmp/zrok-checksums.sha256 \"${base}/checksums.sha256.txt\";     ( cd /tmp \u0026\u0026 grep -E \"[ /]${asset}\\$\" zrok-checksums.sha256 | sha256sum -c - );     tar -xzf \"/tmp/${asset}\" -C /usr/local/bin zrok2;     ln -sf zrok2 /usr/local/bin/zrok;     rm \"/tmp/${asset}\" /tmp/zrok-checksums.sha256;     zrok2 version;     zrok version # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |3 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 /bin/sh -c set -eux;     deb_arch=\"$(dpkg --print-architecture)\";     case \"${deb_arch}\" in       amd64) gh_arch=\"amd64\" ;;       arm64) gh_arch=\"arm64\" ;;       armhf) gh_arch=\"armv6\" ;;       *) echo \"unsupported arch: ${deb_arch}\" \u003e\u00262; exit 1 ;;     esac;     asset=\"gh_${GH_VERSION}_linux_${gh_arch}.tar.gz\";     base=\"https://github.com/cli/cli/releases/download/v${GH_VERSION}\";     curl -fsSL -o \"/tmp/${asset}\" \"${base}/${asset}\";     curl -fsSL -o /tmp/gh-checksums.txt \"${base}/gh_${GH_VERSION}_checksums.txt\";     ( cd /tmp \u0026\u0026 grep -E \"[ /]${asset}\\$\" gh-checksums.txt | sha256sum -c - );     rm /tmp/gh-checksums.txt;     tar -xzf \"/tmp/${asset}\" -C /tmp;     install -m 0755 \"/tmp/gh_${GH_VERSION}_linux_${gh_arch}/bin/gh\" /usr/local/bin/gh;     rm -rf \"/tmp/${asset}\" \"/tmp/gh_${GH_VERSION}_linux_${gh_arch}\";     gh --version # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |3 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 /bin/sh -c set -eux;     deb_arch=\"$(dpkg --print-architecture)\";     case \"${deb_arch}\" in       amd64) jj_arch=\"x86_64-unknown-linux-musl\" ;;       arm64) jj_arch=\"aarch64-unknown-linux-musl\" ;;       *) echo \"unsupported arch: ${deb_arch}\" \u003e\u00262; exit 1 ;;     esac;     asset=\"jj-v${JJ_VERSION}-${jj_arch}.tar.gz\";     base=\"https://github.com/jj-vcs/jj/releases/download/v${JJ_VERSION}\";     curl -fsSL -o \"/tmp/${asset}\" \"${base}/${asset}\";     tar -xzf \"/tmp/${asset}\" -C /usr/local/bin ./jj;     rm \"/tmp/${asset}\";     jj --version # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |3 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 /bin/sh -c if getent passwd 1000 \u003e/dev/null; then userdel -r \"$(getent passwd 1000 | cut -d: -f1)\"; fi  \u0026\u0026 useradd --create-home --uid 1000 --shell /bin/bash pi # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |3 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 /bin/sh -c npm install -g @earendil-works/pi-coding-agent@0.86.1 openspec  \u0026\u0026 { pi --version || true; }  \u0026\u0026 { openspec --version || true; } # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ARG PI_FLOWS_VERSION=0.3.2",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ARG PI_ANTHROPIC_MESSAGES_VERSION=0.3.4",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ARG PI_DASHBOARD_SUBAGENTS_VERSION=0.2.4",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |6 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 PI_FLOWS_VERSION=0.3.2 PI_ANTHROPIC_MESSAGES_VERSION=0.3.4 PI_DASHBOARD_SUBAGENTS_VERSION=0.2.4 /bin/sh -c npm install -g       \"@blackbelt-technology/pi-flows@${PI_FLOWS_VERSION}\"       \"@blackbelt-technology/pi-anthropic-messages@${PI_ANTHROPIC_MESSAGES_VERSION}\"       \"@blackbelt-technology/pi-dashboard-subagents@${PI_DASHBOARD_SUBAGENTS_VERSION}\"  \u0026\u0026 ls -d /usr/local/lib/node_modules/@blackbelt-technology/pi-flows          /usr/local/lib/node_modules/@blackbelt-technology/pi-anthropic-messages          /usr/local/lib/node_modules/@blackbelt-technology/pi-dashboard-subagents # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |6 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 PI_FLOWS_VERSION=0.3.2 PI_ANTHROPIC_MESSAGES_VERSION=0.3.4 PI_DASHBOARD_SUBAGENTS_VERSION=0.2.4 /bin/sh -c corepack enable # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "WORKDIR /app",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./ # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY tsconfig.base.json tsconfig.json ./ # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY scripts ./scripts # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY patches ./patches # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY packages ./packages # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY qa ./qa # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY knip.json knip-baseline.json playwright.config.ts ./ # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY tests ./tests # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY public ./public # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY .github ./.github # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY .pi/skills ./.pi/skills # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY --chmod=0755 docker/supervise-daemon.sh /usr/local/bin/supervise-daemon.sh # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "COPY docker/scripts ./docker/scripts # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |6 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 PI_FLOWS_VERSION=0.3.2 PI_ANTHROPIC_MESSAGES_VERSION=0.3.4 PI_DASHBOARD_SUBAGENTS_VERSION=0.2.4 /bin/sh -c pnpm install --frozen-lockfile  \u0026\u0026 pnpm run build  \u0026\u0026 npm link  \u0026\u0026 apt-get purge -y --auto-remove build-essential python3  \u0026\u0026 rm -rf /var/lib/apt/lists/*  \u0026\u0026 chown -R pi:pi /app # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "RUN |6 ZROK_VERSION=2.0.4 GH_VERSION=2.62.0 JJ_VERSION=0.24.0 PI_FLOWS_VERSION=0.3.2 PI_ANTHROPIC_MESSAGES_VERSION=0.3.4 PI_DASHBOARD_SUBAGENTS_VERSION=0.2.4 /bin/sh -c mkdir -p /home/pi/.pi /home/pi/.zrok2 \u0026\u0026 chown pi:pi /home/pi/.pi /home/pi/.zrok2 # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "USER pi",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ENV HOME=/home/pi",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "EXPOSE [8000/tcp 9999/tcp]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "VOLUME [/home/pi/.pi /home/pi/.zrok2]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "ENTRYPOINT [\"/usr/local/bin/entrypoint.sh\"]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        },
+        {
+            "created": "2026-10-21T16:27:06Z",
+            "created_by": "CMD [\"start\"]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+        }
+    ]
+}
