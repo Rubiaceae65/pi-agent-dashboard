@@ -8,11 +8,12 @@ import type {
   ServerToBrowserMessage,
   SpawnFailureCode,
 } from "@blackbelt-technology/pi-dashboard-shared/browser-protocol.js";
+import type { CardSectionPrefs } from "@blackbelt-technology/pi-dashboard-shared/card-sections.js";
 import type { DisplayPrefs } from "@blackbelt-technology/pi-dashboard-shared/display-prefs.js";
 import type { ProviderRefreshError } from "@blackbelt-technology/pi-dashboard-shared/protocol.js";
 import type { TerminalSession } from "@blackbelt-technology/pi-dashboard-shared/terminal-types.js";
 import type { CommandInfo, DashboardSession, FileEntry, ModelInfo, OpenSpecData, OpenSpecGroup, RoleInfo } from "@blackbelt-technology/pi-dashboard-shared/types.js";
-import { useCallback, useEffect, useRef } from "react";
+import { startTransition, useCallback, useEffect, useRef } from "react";
 import type { DiscoveredServerInfo } from "../components/connectivity/ServerSelector.js";
 import type { ToastVariant } from "../components/primitives/Toast.js";
 import { EMPTY_CANVAS_STATE, reduceCanvasChip, reduceCanvasIntent } from "../lib/canvas/canvas-gate.js";
@@ -129,6 +130,10 @@ export interface MessageHandlerSetters {
   setPinnedDirectories: React.Dispatch<React.SetStateAction<string[]>>;
   /** Canonical collapsed folder keys, synced via `collapsed_folders_updated`. See change: persist-folder-collapse-server-side. */
   setCollapsedFolders: React.Dispatch<React.SetStateAction<string[]>>;
+  /** Session-list grouping prefs, synced via `group_by_prefs_updated`. See change: session-list-group-by. */
+  setGroupByPrefs?: React.Dispatch<React.SetStateAction<import("@blackbelt-technology/pi-dashboard-shared/session-group-by.js").GroupByPrefs | undefined>>;
+  /** Session-card section visibility snapshot, synced via `card_sections_updated`. Optional so older setter bags stay valid. See change: configurable-session-card-sections. */
+  setCardSections?: React.Dispatch<React.SetStateAction<CardSectionPrefs>>;
   /** Favorite model labels, synced via `favorite_models_updated`. See change: enrich-model-selector-capabilities-favorites. */
   setFavoriteModels: React.Dispatch<React.SetStateAction<string[]>>;
   /** folder-workspaces: full workspace list, kept in sync via `workspaces_updated`. */
@@ -249,6 +254,15 @@ export interface MessageHandlerDeps {
   /** Safety-net timers for `replayInFlight`. See change: show-replay-in-flight-indicator. */
   replayInFlightTimersRef: React.MutableRefObject<Map<string, ReturnType<typeof setTimeout>>>;
   /**
+   * Mark a session's history load failed (content-gated in App). Passed as the
+   * `onTimeout` of the single `loadingHistory` re-arm site, and invoked on
+   * `dataUnavailable` when a load was in flight. Never wired to the
+   * `replayInFlight` re-arm. See change: show-session-history-load-state.
+   */
+  markHistoryLoadFailed?: (sessionId: string) => void;
+  /** Clear the failed mark (non-empty or terminal replay batch). See change: show-session-history-load-state. */
+  clearHistoryLoadFailed?: (sessionId: string) => void;
+  /**
    * Live snapshot of pinned dirs + workspaces + sessions for the
    * `isVisibleCwd` check that gates the off-screen spawn_error toast.
    * Optional for back-compat. See change: harden-worktree-spawn.
@@ -299,13 +313,13 @@ export function useMessageHandler(
   const {
     setSessions, setSessionStates, setSessionCommands,
     setFileResults, setChangedOnDisk, setOpenspecMap, setFolderGitMap, setOpenspecGroupsMap, setModelsMap, setModelRefreshErrorsMap, setRolesMap, setSpawnResult,
-    setSessionOrderMap, setPinnedDirectories, setCollapsedFolders, setFavoriteModels, setWorkspaces, setTerminals,
+    setSessionOrderMap, setPinnedDirectories, setCollapsedFolders, setCardSections, setGroupByPrefs, setFavoriteModels, setWorkspaces, setTerminals,
     setDiscoveredServers, setSpawnErrors, setResumeErrors,
     setDisplayPrefs, setLoadingHistory, setReplayInFlight, setCanvasMap, setHistoryGaps, setHistorySpliceRev,
     setEndedTotalsMap, setArchivedCountMap, setPagedCount, setSnapshotGeneration,
     setPageReplyGen, setPageExhausted,
   } = setters;
-  const { send, navigate, clearSpawningCwd, spawningCwdsRef, subscribedRef, pendingTerminalCwdRef, lastCreatedTerminalIdRef, maxSeqMapRef, selectedSessionIdRef, pendingSpawnsRef, loadingHistoryTimersRef, replayInFlightTimersRef, replayPersister, showToast, sessionsRef, openspecGetInflightRef, endedTotalsMap } = deps;
+  const { send, navigate, clearSpawningCwd, spawningCwdsRef, subscribedRef, pendingTerminalCwdRef, lastCreatedTerminalIdRef, maxSeqMapRef, selectedSessionIdRef, pendingSpawnsRef, loadingHistoryTimersRef, replayInFlightTimersRef, replayPersister, showToast, sessionsRef, openspecGetInflightRef, endedTotalsMap, markHistoryLoadFailed, clearHistoryLoadFailed } = deps;
   // One-shot per session: suppress a repeat auto-name toast for the same
   // session id. See change: add-auto-session-naming.
   const autoNameToastedRef = useRef<Set<string>>(new Set());
@@ -601,11 +615,16 @@ export function useMessageHandler(
         // unsuccessful result marks the session `dataUnavailable`.
         // See change: show-chat-history-loading-indicator.
         if ((msg.updates as Partial<DashboardSession>).dataUnavailable === true) {
+          // Read BEFORE the clears below delete the timer: timer presence is
+          // the "load in flight" proxy. A never-subscribed / already-loaded
+          // session is not a failure. See change: show-session-history-load-state.
+          const wasLoading = loadingHistoryTimersRef.current.has(msg.sessionId);
           clearLoadingHistory(setLoadingHistory, loadingHistoryTimersRef, msg.sessionId);
           // Same failure edge for the in-flight flag: no terminal batch is
           // coming, so the pill must not hang.
           // See change: show-replay-in-flight-indicator.
           clearLoadingHistory(setReplayInFlight, replayInFlightTimersRef, msg.sessionId);
+          if (wasLoading) markHistoryLoadFailed?.(msg.sessionId);
         }
         // Live endedTotals (D9): a held session transitioning to ended grows
         // its group's count between snapshots. Read via the sessions mirror
@@ -1123,6 +1142,14 @@ export function useMessageHandler(
         }
         if (msg.events.length > 0) {
           setHistorySpliceRev?.((n) => n + 1);
+          // Wrap the splice in a transition so a 200-event backfill doesn't
+          // lock the UI thread for the duration of the React commit (setState +
+          // reducer + virtualizer re-measure + markdown rendering). The user
+          // can keep typing, scrolling, etc., while the backfilled rows paint
+          // in the background. Without this, a heavy chunk on a long session
+          // is the dominant source of the "Load earlier freezes the page"
+          // complaint. See change: shrink-backfill-batch.
+          startTransition(() => {
           setSessionStates((prev) => {
             const current = prev.get(msg.sessionId);
             if (!current) return prev;
@@ -1139,17 +1166,27 @@ export function useMessageHandler(
              * belong immediately ABOVE the tail — i.e. after the divider, not
              * before it. `at + 1`, not `at`.
              * See change: fix-lazy-history-backfill-ux (D3).
+             *
+             * Splice the backfilled segment in via a single O(N) traversal of
+             * a fresh array copy — replaces the three-spread version (which
+             * walked current.messages three times). On an 11k-row transcript
+             * the three-spread built a 22k-element array literal each click;
+             * this version walks it once. React immutability is preserved (the
+             * copy is fresh), and the `at` index is read from the copy of
+             * current.messages before any mutation so the splice index is stable.
              */
-            const messages = [
-              ...current.messages.slice(0, at + 1),
-              // Correctness floor before merge: no orphaned spinner, no
-              // permanently-streaming bubble (D5).
-              ...finalizeBackfillSegment(seg.messages),
-              ...current.messages.slice(at + 1),
-            ];
             const next = new Map(prev);
-            next.set(msg.sessionId, { ...current, messages });
+            const currentCopy = { ...current };
+            const messages = currentCopy.messages.slice();
+            // Correctness floor before merge: no orphaned spinner, no
+            // permanently-streaming bubble (D5). `finalizeBackfillSegment`
+            // never mutates — returns a new array.
+            const completed = finalizeBackfillSegment(seg.messages);
+            messages.splice(at + 1, 0, ...completed);
+            currentCopy.messages = messages;
+            next.set(msg.sessionId, currentCopy);
             return next;
+          });
           });
         }
         /**
@@ -1341,10 +1378,14 @@ export function useMessageHandler(
         // unless a timer is armed (flag set), so warm/painted sessions are
         // unaffected. See change: show-chat-history-loading-indicator,
         // fix-history-loading-false-empty-flash.
+        // The ceiling's expiry marks the load failed (content-gated in App);
+        // any content or terminal batch clears a prior failed mark.
+        // See change: show-session-history-load-state.
         if (msg.events.length > 0 || msg.isLast === true) {
           clearLoadingHistory(setLoadingHistory, loadingHistoryTimersRef, msg.sessionId);
+          clearHistoryLoadFailed?.(msg.sessionId);
         } else {
-          rearmLoadingHistory(setLoadingHistory, loadingHistoryTimersRef, msg.sessionId, HYDRATE_CEILING_MS);
+          rearmLoadingHistory(setLoadingHistory, loadingHistoryTimersRef, msg.sessionId, HYDRATE_CEILING_MS, markHistoryLoadFailed);
         }
         // `replayInFlight` deliberately diverges from `loadingHistory` above:
         // first content clears the skeleton but the transcript is still
@@ -1703,6 +1744,21 @@ export function useMessageHandler(
         setCollapsedFolders(msg.collapsedFolders);
         break;
 
+      case "group_by_prefs_updated":
+        // session-list-group-by: aggregate snapshot on connect + every
+        // mutation. Replace, do not merge.
+        setGroupByPrefs?.({
+          defaultGroupBy: msg.defaultGroupBy,
+          folderGroupBy: msg.folderGroupBy,
+          collapsedLanes: msg.collapsedLanes,
+        });
+        break;
+
+      case "card_sections_updated":
+        // configurable-session-card-sections: full snapshot. Replace, do not merge.
+        setCardSections?.(msg.cardSections);
+        break;
+
       case "favorite_models_updated":
         setFavoriteModels(msg.labels);
         break;
@@ -1955,5 +2011,5 @@ export function useMessageHandler(
         break;
       }
     }
-  }, [send, clearSpawningCwd, navigate, setSessions, setSessionStates, setSessionCommands, setFileResults, setChangedOnDisk, setOpenspecMap, setModelsMap, setModelRefreshErrorsMap, setRolesMap, setSpawnResult, setSessionOrderMap, setPinnedDirectories, setCollapsedFolders, setFavoriteModels, setWorkspaces, setTerminals, setDiscoveredServers, setLoadingHistory, setReplayInFlight, setCanvasMap, spawningCwdsRef, subscribedRef, pendingTerminalCwdRef, maxSeqMapRef, selectedSessionIdRef, loadingHistoryTimersRef, replayInFlightTimersRef, replayPersister, flushLiveEvents, scheduleLiveFlush, publishGap, setHistorySpliceRev, setEndedTotalsMap, setPagedCount, setSnapshotGeneration, setPageReplyGen, setPageExhausted, sessionsRef, openspecGetInflightRef]);
+  }, [send, clearSpawningCwd, navigate, setSessions, setSessionStates, setSessionCommands, setFileResults, setChangedOnDisk, setOpenspecMap, setModelsMap, setModelRefreshErrorsMap, setRolesMap, setSpawnResult, setSessionOrderMap, setPinnedDirectories, setCollapsedFolders, setCardSections, setGroupByPrefs, setFavoriteModels, setWorkspaces, setTerminals, setDiscoveredServers, setLoadingHistory, setReplayInFlight, setCanvasMap, spawningCwdsRef, subscribedRef, pendingTerminalCwdRef, maxSeqMapRef, selectedSessionIdRef, loadingHistoryTimersRef, replayInFlightTimersRef, replayPersister, flushLiveEvents, scheduleLiveFlush, publishGap, setHistorySpliceRev, setEndedTotalsMap, setPagedCount, setSnapshotGeneration, setPageReplyGen, setPageExhausted, sessionsRef, openspecGetInflightRef, markHistoryLoadFailed, clearHistoryLoadFailed]);
 }

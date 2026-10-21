@@ -21,11 +21,16 @@ function getSessionsDir(): string {
 
 /** Extract session ID (UUID) from a filename like `<ts>_<uuid>.jsonl` */
 function extractSessionId(filename: string): string | null {
-  // Format: 2026-03-30T21-39-43-034Z_c7ab4be9-78d1-4764-8197-dbf74fea8bf4.jsonl
+  // pi-mono format: 2026-03-30T21-39-43-034Z_c7ab4be9-78d1-4764-8197-dbf74fea8bf4.jsonl
+  // prime-agent format: <uuid>.jsonl (no timestamp prefix).
+  // Strip .jsonl/.meta.json, then either take the segment after the first `_`
+  // or accept the bare stem when no underscore is present.
   const base = filename.replace(/\.jsonl$/, "").replace(/\.meta\.json$/, "");
   const underscoreIdx = base.indexOf("_");
-  if (underscoreIdx === -1) return null;
-  return base.slice(underscoreIdx + 1);
+  if (underscoreIdx !== -1) return base.slice(underscoreIdx + 1);
+  // No underscore → treat the entire stem as the session id (prime-agent's
+  // flat UUID-only filenames).
+  return base || null;
 }
 
 /** Extract startedAt from a filename timestamp like `2026-03-30T21-39-43-034Z` */
@@ -337,13 +342,155 @@ export function scanAllSessions(sessionsDir?: string, opts: ScanOptions = {}): S
   const ageCutoff = archiveAfterDays > 0 ? now - archiveAfterDays * 86_400_000 : Number.NEGATIVE_INFINITY;
 
   let cwdDirs: string[];
+  let topLevelFiles: string[] = [];
   try {
-    cwdDirs = readdirSync(dir).filter((d) => {
-      try { return statSync(join(dir, d)).isDirectory(); } catch { return false; }
-    });
+    const entries = readdirSync(dir);
+    cwdDirs = [];
+    topLevelFiles = [];
+    for (const e of entries) {
+      try {
+        const fullPath = join(dir, e);
+        if (statSync(fullPath).isDirectory()) {
+          cwdDirs.push(e);
+        } else if (e.endsWith(".jsonl")) {
+          // prime-agent's flat layout: sessions at piSessionsDir/<file>.jsonl
+          // (no per-cwd subdirectory). Treat the file itself as a session.
+          topLevelFiles.push(e);
+        }
+      } catch { /* ignore */ }
+    }
   } catch {
     return { sessions: [], archived: [], migrated: 0, agedOut: 0, cacheUpdates: 0 };
   }
+
+  // One scan body, shared by BOTH on-disk layouts so the archive/migration
+  // rules can never drift between them:
+  //   pi-mono       piSessionsDir/<encoded-cwd>/<ts>_<uuid>.jsonl
+  //   prime-agent   piSessionsDir/<uuid>.jsonl   (no per-cwd subdirectory)
+  // See change: surface-historical-sessions.
+  const scanSessionFile = (
+    sessionId: string,
+    sessionFile: string,
+    sessionDir: string,
+    startedAt: number,
+  ) => {
+    // Try reading .meta.json
+    const meta = readSessionMeta(sessionFile);
+
+    if (meta && meta.cwd) {
+      // Boot archive decision, BEFORE any stats extraction or cache-freshness
+      // work. Order (design D4): already-archived → index only; else the
+      // ended+hidden migration AND the scan-time age rule rewrite the
+      // sidecar once and index the row; else restore as today. The persisted
+      // status is deliberately ignored (`live !== true` is the test) because
+      // a clean server stop leaves a non-`ended` status behind.
+      // See change: archive-sessions-lazy-load.
+      const jsonlMtime = readJsonlMtime(sessionFile);
+      if (meta.archived === true) {
+        archived.push(archivedRowFromMeta(sessionId, sessionFile, meta, jsonlMtime, startedAt));
+        return;
+      }
+      if (meta.live !== true && meta.archived === undefined) {
+        const isHiddenMigration = meta.hidden === true;
+        const reference = Math.max(meta.endedAt ?? jsonlMtime ?? startedAt, meta.restoredAt ?? 0);
+        const isAgedOut = archiveAfterDays > 0 && reference < ageCutoff;
+        if (isHiddenMigration || isAgedOut) {
+          const archivedAt = meta.endedAt ?? jsonlMtime ?? startedAt;
+          // Leave `hidden` untouched so a rolled-back server still sees the
+          // session as hidden; add the archive fields only.
+          mergeSessionMeta(sessionFile, { archived: true, archivedAt });
+          cacheUpdates++;
+          if (isHiddenMigration) migrated++;
+          else agedOut++;
+          archived.push(archivedRowFromMeta(sessionId, sessionFile, { ...meta, archived: true, archivedAt }, jsonlMtime, startedAt));
+          return;
+        }
+      }
+
+      // Check cache freshness: if .jsonl is newer than cachedAt, re-extract
+      let needsReExtract = false;
+      if (meta.cachedAt) {
+        try {
+          const jsonlMtime = statSync(sessionFile).mtimeMs;
+          if (jsonlMtime > meta.cachedAt) {
+            needsReExtract = true;
+          }
+        } catch { /* ignore stat errors */ }
+      }
+
+      if (!needsReExtract) {
+        // Use cached meta as-is
+        sessions.push(sessionFromMeta(sessionId, sessionFile, sessionDir, meta, startedAt));
+        return;
+      }
+
+      // Stale cache — re-extract stats and merge
+      const stats = extractSessionStats(sessionFile);
+      if (stats) {
+        // Pi's JSONL has no turn_end/contextUsage events, so stats.contextWindow
+        // is always inferContextWindow(model) — a hardcoded heuristic that pins
+        // any Claude model to 200k and ignores 1M Sonnet variants. The persisted
+        // meta.contextWindow came from a real live `turn_end` event, so it's
+        // authoritative; only fall back to the inferred value when the model
+        // changed (persisted value no longer applies) or none was persisted.
+        const effectiveModel = stats.model ?? meta.model;
+        const preserveContextWindow =
+          meta.contextWindow !== undefined && effectiveModel === meta.model;
+        const updated: SessionMeta = {
+          ...meta,
+          model: stats.model ?? meta.model,
+          thinkingLevel: stats.thinkingLevel ?? meta.thinkingLevel,
+          tokensIn: stats.tokensIn,
+          tokensOut: stats.tokensOut,
+          cacheRead: stats.cacheRead,
+          cacheWrite: stats.cacheWrite,
+          cost: stats.cost,
+          contextTokens: stats.lastTotalTokens,
+          contextWindow: preserveContextWindow ? meta.contextWindow : stats.contextWindow,
+          cachedAt: Date.now(),
+        };
+        writeSessionMeta(sessionFile, updated);
+        cacheUpdates++;
+        sessions.push(sessionFromMeta(sessionId, sessionFile, sessionDir, updated, startedAt));
+      } else {
+        sessions.push(sessionFromMeta(sessionId, sessionFile, sessionDir, meta, startedAt));
+      }
+      return;
+    }
+
+    // No usable meta — fall back to .jsonl parsing
+    const header = readJsonlHeaderSync(sessionFile);
+    if (!header) return;
+
+    const stats = extractSessionStats(sessionFile);
+    const newMeta: SessionMeta = {
+      ...(meta ?? {}), // preserve any existing partial meta (e.g. source)
+      cwd: header.cwd,
+      firstMessage: header.firstMessage,
+      name: meta?.name ?? header.name,
+      startedAt,
+      status: "ended",
+      // Persist an evidence-derived end time so the rebuilt meta is not itself
+      // a fresh source of ended-without-endedAt records; an existing value in
+      // prior meta wins. See change: fix-ended-session-missing-endedat.
+      endedAt: meta?.endedAt ?? readJsonlMtime(sessionFile) ?? startedAt,
+      ...(stats ? {
+        model: stats.model,
+        thinkingLevel: stats.thinkingLevel,
+        tokensIn: stats.tokensIn,
+        tokensOut: stats.tokensOut,
+        cacheRead: stats.cacheRead,
+        cacheWrite: stats.cacheWrite,
+        cost: stats.cost,
+        contextTokens: stats.lastTotalTokens,
+        contextWindow: stats.contextWindow,
+      } : {}),
+      cachedAt: Date.now(),
+    };
+    writeSessionMeta(sessionFile, newMeta);
+    cacheUpdates++;
+    sessions.push(sessionFromMeta(sessionId, sessionFile, sessionDir, newMeta, startedAt));
+  };
 
   for (const cwdDir of cwdDirs) {
     const cwdPath = join(dir, cwdDir);
@@ -355,131 +502,21 @@ export function scanAllSessions(sessionsDir?: string, opts: ScanOptions = {}): S
     for (const jsonlFile of files) {
       const sessionId = extractSessionId(jsonlFile);
       if (!sessionId) continue;
-
-      const sessionFile = join(cwdPath, jsonlFile);
-      const sessionDir = cwdPath;
-      const startedAt = extractTimestamp(jsonlFile);
-
-      // Try reading .meta.json
-      const meta = readSessionMeta(sessionFile);
-
-      if (meta && meta.cwd) {
-        // Boot archive decision, BEFORE any stats extraction or cache-freshness
-        // work. Order (design D4): already-archived → index only; else the
-        // ended+hidden migration AND the scan-time age rule rewrite the
-        // sidecar once and index the row; else restore as today. The persisted
-        // status is deliberately ignored (`live !== true` is the test) because
-        // a clean server stop leaves a non-`ended` status behind.
-        // See change: archive-sessions-lazy-load.
-        const jsonlMtime = readJsonlMtime(sessionFile);
-        if (meta.archived === true) {
-          archived.push(archivedRowFromMeta(sessionId, sessionFile, meta, jsonlMtime, startedAt));
-          continue;
-        }
-        if (meta.live !== true && meta.archived === undefined) {
-          const isHiddenMigration = meta.hidden === true;
-          const reference = Math.max(meta.endedAt ?? jsonlMtime ?? startedAt, meta.restoredAt ?? 0);
-          const isAgedOut = archiveAfterDays > 0 && reference < ageCutoff;
-          if (isHiddenMigration || isAgedOut) {
-            const archivedAt = meta.endedAt ?? jsonlMtime ?? startedAt;
-            // Leave `hidden` untouched so a rolled-back server still sees the
-            // session as hidden; add the archive fields only.
-            mergeSessionMeta(sessionFile, { archived: true, archivedAt });
-            cacheUpdates++;
-            if (isHiddenMigration) migrated++;
-            else agedOut++;
-            archived.push(archivedRowFromMeta(sessionId, sessionFile, { ...meta, archived: true, archivedAt }, jsonlMtime, startedAt));
-            continue;
-          }
-        }
-
-        // Check cache freshness: if .jsonl is newer than cachedAt, re-extract
-        let needsReExtract = false;
-        if (meta.cachedAt) {
-          try {
-            const jsonlMtime = statSync(sessionFile).mtimeMs;
-            if (jsonlMtime > meta.cachedAt) {
-              needsReExtract = true;
-            }
-          } catch { /* ignore stat errors */ }
-        }
-
-        if (!needsReExtract) {
-          // Use cached meta as-is
-          sessions.push(sessionFromMeta(sessionId, sessionFile, sessionDir, meta, startedAt));
-          continue;
-        }
-
-        // Stale cache — re-extract stats and merge
-        const stats = extractSessionStats(sessionFile);
-        if (stats) {
-          // Pi's JSONL has no turn_end/contextUsage events, so stats.contextWindow
-          // is always inferContextWindow(model) — a hardcoded heuristic that pins
-          // any Claude model to 200k and ignores 1M Sonnet variants. The persisted
-          // meta.contextWindow came from a real live `turn_end` event, so it's
-          // authoritative; only fall back to the inferred value when the model
-          // changed (persisted value no longer applies) or none was persisted.
-          const effectiveModel = stats.model ?? meta.model;
-          const preserveContextWindow =
-            meta.contextWindow !== undefined && effectiveModel === meta.model;
-          const updated: SessionMeta = {
-            ...meta,
-            model: stats.model ?? meta.model,
-            thinkingLevel: stats.thinkingLevel ?? meta.thinkingLevel,
-            tokensIn: stats.tokensIn,
-            tokensOut: stats.tokensOut,
-            cacheRead: stats.cacheRead,
-            cacheWrite: stats.cacheWrite,
-            cost: stats.cost,
-            contextTokens: stats.lastTotalTokens,
-            contextWindow: preserveContextWindow ? meta.contextWindow : stats.contextWindow,
-            cachedAt: Date.now(),
-          };
-          writeSessionMeta(sessionFile, updated);
-          cacheUpdates++;
-          sessions.push(sessionFromMeta(sessionId, sessionFile, sessionDir, updated, startedAt));
-        } else {
-          sessions.push(sessionFromMeta(sessionId, sessionFile, sessionDir, meta, startedAt));
-        }
-        continue;
-      }
-
-      // No usable meta — fall back to .jsonl parsing
-      const header = readJsonlHeaderSync(sessionFile);
-      if (!header) continue;
-
-      const stats = extractSessionStats(sessionFile);
-      const newMeta: SessionMeta = {
-        ...(meta ?? {}), // preserve any existing partial meta (e.g. source)
-        cwd: header.cwd,
-        firstMessage: header.firstMessage,
-        name: meta?.name ?? header.name,
-        startedAt,
-        status: "ended",
-        // Persist an evidence-derived end time so the rebuilt meta is not itself
-        // a fresh source of ended-without-endedAt records; an existing value in
-        // prior meta wins. See change: fix-ended-session-missing-endedat.
-        endedAt: meta?.endedAt ?? readJsonlMtime(sessionFile) ?? startedAt,
-        ...(stats ? {
-          model: stats.model,
-          thinkingLevel: stats.thinkingLevel,
-          tokensIn: stats.tokensIn,
-          tokensOut: stats.tokensOut,
-          cacheRead: stats.cacheRead,
-          cacheWrite: stats.cacheWrite,
-          cost: stats.cost,
-          contextTokens: stats.lastTotalTokens,
-          contextWindow: stats.contextWindow,
-        } : {}),
-        cachedAt: Date.now(),
-      };
-      writeSessionMeta(sessionFile, newMeta);
-      cacheUpdates++;
-      sessions.push(sessionFromMeta(sessionId, sessionFile, sessionDir, newMeta, startedAt));
+      scanSessionFile(sessionId, join(cwdPath, jsonlFile), cwdPath, extractTimestamp(jsonlFile));
     }
   }
 
+  // prime-agent's flat layout: session files sit directly in piSessionsDir.
+  // The cwdDirs loop above only walks pi-mono's per-cwd subdirectories, so
+  // without this pass prime-agent sessions never reach the sidebar.
+  for (const jsonlFile of topLevelFiles) {
+    const sessionId = extractSessionId(jsonlFile);
+    if (!sessionId) continue;
+    scanSessionFile(sessionId, join(dir, jsonlFile), dir, extractTimestamp(jsonlFile));
+  }
+
   return { sessions, archived, migrated, agedOut, cacheUpdates };
+
 }
 
 /** Synchronous JSONL header reader (used during scan) */

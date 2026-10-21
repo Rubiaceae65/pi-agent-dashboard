@@ -34,6 +34,10 @@ Constraints:
 - Five model-facing tools and one per-turn injection block, with the pinned tier
   kept byte-stable.
 - One index engine (node:sqlite via `packages/kb`) and no native SQLite addon.
+  One engine, not one file: `docs` stays in kb-extension's store and each
+  other scope gets its own kb database, because the kb store has no
+  multi-root filter and `kb_search` searches every root
+  (`context-manager-kernel` K6).
 - Lessons reach the model when their situation recurs, not when the model
   remembers to search.
 - Existing knowledge is importable, but only through triage and review.
@@ -104,9 +108,17 @@ whose behaviour is small enough to re-specify.
 
 ### D2: One owner per hook; the pinned tier is byte-stable
 - The injection owner uses `systemPromptOptions` sections. The pinned block
-  (≤ ~2 KB: standing preferences, `kind: preference` + `delivery: pinned`)
-  changes only when a pinned lesson changes, which keeps the provider prompt
-  cache warm.
+  changes only when its inputs change, which keeps the provider prompt cache
+  warm. It carries two classes:
+  - the DOX doctrine (~2.3 KB READ, ~4.9 KB READ + WRITE), the same bytes
+    kb-extension injects today;
+  - pinned lessons (`kind: preference` + `delivery: pinned`), capped at
+    ~2 KB.
+- Under the dashboard, the bridge forces `systemPrompt` every turn, so the
+  block is inserted into the forced prompt next to a sentinel line
+  (`context-manager-kernel` K5).
+- Exception: the dashboard bridge's session-context injector (not a context
+  plane) keeps forcing `systemPrompt`; moving it to a section is a follow-up.
 - Everything per-turn goes into a `before_agent_start` `message`, never into
   `systemPrompt`.
 
@@ -259,7 +271,7 @@ Writes and indexing:
   2602.12670). The pinned tier therefore holds only non-standard rules, and
   every tier is A/B-tested before cutover (task 2.2).
 
-### D6: Five tools + deactivated aliases
+### D6: Five tools + aliases
 - **`context_search(query, scope?)`:** runs kb retrieval per scope and fuses
   across scopes with Reciprocal Rank Fusion. The `docs` scope keeps kb's
   current ranking and lanes unchanged.
@@ -269,9 +281,12 @@ Writes and indexing:
   gate and runs the PII/secret scrub before a project-scope write.
 - **`skill_manage`:** forked from hermes with a trimmed description.
 - **`exec`:** see D7.
-- **Old names:** registered and then removed from the active set with
-  `pi.setActiveTools`, so calls from stale prompts still resolve. They are
-  removed after one release.
+- **Old names (corrected by `context-manager-kernel` K8):** pi 0.87.1 runs
+  tool calls only against the active set (`prepareToolCall` → `Tool <name>
+  not found`), so an inactive alias does not resolve. The old names
+  therefore stay **active** for one release. They are unchanged until
+  cutover, then slimmed to one-line deprecation descriptions, and removed
+  after that release.
 - **Retrieval labels from behaviour:** a `context_search` followed by opening
   a result is logged as a click (query → ref, rank). A search followed by
   a grep fallback and then opening a file that was not in the results is
@@ -402,30 +417,35 @@ triage. Status-type entries are archived to the `sessions` scope instead of
 becoming lessons.
 
 ### D11: The System-1 adapter
-- Interface: `SystemOne.predict(state, questions)` with the `choice`, `score`
-  and `noul` primitives.
-- Implementations:
-  - HTTP `/v1/systemone`, covering a remote endpoint or a dashboard-managed
-    local server (Von or Laya via uv or Docker, on a port other than 8000);
-  - in-process `laya-ts`;
-  - `LlmSystemOne`, which asks the selected LLM for the same structured answers.
-- **Fallback rule:** no System-1 endpoint configured → `LlmSystemOne`. This is
-  a configuration switch, not a per-item one. It applies per step (below).
-- **Per-step routing:** each triage step has its own route: an LLM model, a
-  System-1 endpoint + model, or a deterministic rule optionally followed by a
-  model (e.g. `sensitive`: PII regex first). Each step has its own threshold.
-  The bake-off supports this; no single backend won every step:
+- **Amended by `add-system-one-registry`:** the adapter is the shared library
+  `@blackbelt-technology/pi-system-one` (`predict({ consumer, state, questions })`
+  with `choice`, `score` and `noul`); this change consumes it instead of owning
+  one. Backends, presets, egress (`allowOffMachine`), keys and calibration live
+  in `~/.pi/agent/system-one.json` and its settings section.
+- Implementations: the library's backend kinds — `http` (`/v1/systemone`:
+  hosted, remote, or a dashboard-managed local Von/Laya on 18400–18499) and
+  `llm` (a pi role such as `@fast`, via an injected `LlmCaller`). In-process
+  `laya-ts` stays deferred.
+- **Fallback rule:** "nothing configured → default LLM" becomes the
+  consumer's declared `failurePolicy` (`fail-open | fail-closed |
+  deterministic`) plus an `llm` chain entry when the user adds one. With no
+  config, every step gets `ok: false, reason: "no-backend"` and applies its
+  policy; no request leaves the machine.
+- **Per-step routing:** each triage step is its own consumer, id
+  `context-manager:<step>` (e.g. `context-manager:is_lesson`), routed by a
+  per-consumer override chain in the active preset. A deterministic rule
+  (e.g. `sensitive`: PII regex first) stays in consumer code before
+  `predict`. Thresholds come from each step's calibration record
+  (`<backend>::context-manager:<step>`), measured with the settings Test. The
+  bake-off supports per-step routing; no single backend won every step:
   - `is_lesson`: LLM 0.95 AUC vs best System-1 0.71;
   - `kind`: LLM 0.54 vs Laya 0.20;
   - `scope` on real lessons: Laya 0.92 vs LLM 0.58 (only 12 lessons, weak);
   - `cue` on real lessons: LLM 0.92 vs Laya 0.58;
   - `sensitive` and `same_as`: unmeasured.
-- **Step-level fallback:** a step with no route uses the default triage LLM
-  (`LlmSystemOne`). Decided by configuration, never per item. With nothing
-  configured, every step runs on the default LLM.
-- **Settings UI:** one primary + fallback chain per step, reusing the
-  blackhole `ChainEditor` pattern (`blackhole-model-picker-chains`); defaults
-  keep everything on one LLM.
+- **Settings UI:** the System-1 settings section's per-consumer override
+  (chain editor adapted from the blackhole `ChainEditor`), not a
+  context-manager-owned editor.
 - **Query shape:** System-1 backends are queried with decomposed, observable
   atomic `noul`s (with `true`/`false` descriptions) over a structured JSON
   state, never one abstract judgement. The method study measured this:
@@ -462,23 +482,44 @@ becoming lessons.
   configuration (mode, URL/key, managed install status) and a store-hygiene
   view that is read-only for the old stores.
 
+## Superseded proposals and carry-overs
+
+Four earlier changes are superseded; none had started implementation
+(0 tasks done, no open session or worktree on 2026-09-24).
+
+| Change | Carried over | Phase |
+|---|---|---|
+| `consolidate-retrieval-planes` | Direction only ("wrap" → fork) | — |
+| `memory-retrieval-injection` | Category pinning → pinned tier; "injected ⇒ used" → `fired`/`followed`; prompt sanitising before FTS → `prompt` triggers; fail-safe → chassis fail-open | 1, 3 |
+| `distill-hermes-memory-into-skills` | Shareability gate (`target ≠ user` + scrub), `project IS NULL` exclusion, cross-dedup against lessons and sidecars, human-confirmed routing; maturity as a triage feature | 5 |
+| `add-automatic-session-kb-index` | Lifecycle-triggered ingest (`LiveIdle`/`Ended`, mtime fallback), watermark + hash idempotency, subagent sessions excluded by default, distiller `signal` facet on session chunks | 2 |
+| `add-automatic-session-kb-index` | The shared scrub module (`scrub.ts`), also imported by `add-lora-dataset-export-skill` | 3 |
+
+Related but not superseded: `add-system-one-registry` (it amends D11 so the
+miner consumes its adapter; the amendment lands with that change),
+`add-kb-semantic-annotation-plane` (D4), `add-untrusted-content-guard` (D8),
+`add-codegraph-code-plane` (the `code` scope), `add-session-step-table`
+(a candidate source for task 2.1 eval cases and the miner's labels).
+
 ## Risks / Trade-offs
 
 | Risk | Mitigation |
 |---|---|
 | We own ~30k forked LOC | Drop the ~12k listed in D1. Behavioural tests replace the dropped upstream CI. Each forked module carries its upstream header so fixes can be cherry-picked. |
-| Tool rename breaks prompts, skills and doctrine | Aliases stay registered-but-inactive for one release. The doctrine update is part of the cutover phase. |
+| Tool rename breaks prompts, skills and doctrine | Old names stay registered and **active** for one release (inactive tools do not resolve in pi 0.87.1; `context-manager-kernel` K8). The doctrine update is part of the cutover phase. |
 | Cue false positives teach the model to ignore cards | Explicit triggers, the replay gate (df ≤ 3%), per-lesson `followed` precision with automatic demotion, strict budgets and a silent default. |
 | Lesson files in the repo and web content as a prompt-injection path | Lesson writes go through `lesson` and PR review. Cards are length-capped and delivered in delimited blocks. Web content passes the untrusted-content scanner before indexing. `security-hardening` is applied per phase. |
 | The matcher adds hot-path latency to every tool call | Globs and regexes are precompiled. The budget is measured in the lessons phase (`performance-optimization`). The System-1 relevance gate runs only after a trigger has matched. |
 | The boundary API is new (pi 0.87) | Pin the floor. Contract tests against a real `AgentSession` with a fake provider cover compaction, continuation and cancellation. |
-| Mid-migration double ownership (old packages still installed) | The manager detects the old packages at `session_start` and refuses to register the overlapping hooks, with a clear message, until they are removed. |
+| Mid-migration double ownership (old packages still installed) | The manager detects the old packages by package identity (tool `sourceInfo`, never tool names) once per turn epoch, then stays inert (dispatches nothing, hides its tools) with one notice until they are removed (`context-manager-kernel` K2). |
 | Team-shared lessons leak personal data | A PII/secret scrub gates writes to project scope. The miner's `sensitive` check is only advisory. |
 | System-1 expectations are too high | Opt-in only. The bake-off numbers are documented in D11. |
 
 ## Migration Plan
 
-1. Phases 1–5 ship behind a `contextManager.enabled` flag. While it is off, the
+1. Phases 1–5 ship behind a `contextManager.enabled` flag (`enabled` in
+   `.pi/dashboard/context_manager.json`, project → global, with
+   `PI_CONTEXT_MANAGER=0|1` overriding; `context-manager-kernel` K1). While it is off, the
    package registers nothing. While it is on and the old packages are present,
    the overlap refusal from Risks applies.
 2. The operator runs `/lessons import-hermes` and `/lessons mine --project` in

@@ -81,6 +81,29 @@ export function resolvePiSessionsDir(env?: DashboardPathsEnv): string {
   );
 }
 
+/**
+ * The prime-agent `session-artifacts` directory: a SIBLING of the sessions dir,
+ * at `<agentDir>/session-artifacts`.
+ *
+ * This is where an `rlm.spawn()` child's transcript and its
+ * `rlm-subagent.json` sidecar live — nowhere under `resolvePiSessionsDir()`.
+ * Derived from the RESOLVED sessions dir rather than from `agentDir` directly,
+ * so a deployment that redirects `piSessionsDir` (the Atelier Brain sets
+ * `piSessionsDir: ~/.prime/agent/sessions`) still resolves its artifacts tree
+ * next to the sessions it actually reads.
+ *
+ * `undefined` when the resolved sessions dir has no parent to derive from,
+ * which is the signal to skip the child scan entirely.
+ *
+ * See change: surface-rlm-subagent-children.
+ */
+export function resolveRlmArtifactsDir(env?: DashboardPathsEnv): string | undefined {
+  const sessionsDir = resolvePiSessionsDir(env);
+  const parent = path.dirname(sessionsDir);
+  if (!parent || parent === sessionsDir || parent === path.sep) return undefined;
+  return path.join(parent, "session-artifacts");
+}
+
 /** `~/.pi/dashboard/` — config dir for `config.json`, `server.log`, etc. */
 export function getDashboardConfigDir(env?: DashboardPathsEnv): string {
   return path.join(env?.homedir ?? os.homedir(), ".pi", "dashboard");

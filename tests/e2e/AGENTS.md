@@ -4,7 +4,15 @@ Files in this directory. One row per file. Non-source area (migrated from `docs/
 
 | File | Purpose |
 |------|---------|
+| `composer-session-strip.spec.ts` | L3 (change: redesign-composer-session-strip; F8–F12). Synthetic bridge on `FIXTURE_GIT` (pinned first) pushes… → see `composer-session-strip.spec.ts.AGENTS.md` |
+| `model-roles-promotion.spec.ts` | L3 F11–F13: Models first group, `nav-promoted-roles` → `/settings/plugins/roles` (title `Model roles`, single… → see `model-roles-promotion.spec.ts.AGENTS.md` |
+| `gmail-plugin.spec.ts` | L3 gmail-plugin vs in-container fake Google: F1–F6 (wizard, accounts, levels, revoke, confirm send, reauth badge). → see `gmail-plugin.spec.ts.AGENTS.md` |
+| `helpers/fake-google.ts` | Fake Google (authorize/token/revoke/Gmail) run in-container + `docker exec` control helpers. → see `helpers/fake-google.ts.AGENTS.md` |
+| `plugin-oauth-flow.spec.ts` | L3 demo-plugin seams, unmocked: F1 start → auth link + paste `ok` → `complete`, `signed in`, `demo-account`… → see `plugin-oauth-flow.spec.ts.AGENTS.md` |
+| `preview-denial-remedy.spec.ts` | L3 for preview denial remedy (#F1,#F4-#F13,#X1,#X2): click-opened image → dialog; agent auto-open (absolute… → see `preview-denial-remedy.spec.ts.AGENTS.md` |
 | `README.md` | Docs for browser E2E. Prerequisites: Docker, `npx… → see `README.md.AGENTS.md` |
+| `helpers/computed-contrast.ts` | In-page probes ported from `mockups/ux-probe.cjs`: `measureText` (canvas-resolved fg over composited bg… → see `helpers/computed-contrast.ts.AGENTS.md` |
+| `fixtures/severity-baseline.json` | Computed `--severity-{success,warning,info,error}-{bg,fg}` for all 18 theme×mode combos, captured BEFORE the… → see `fixtures/severity-baseline.json.AGENTS.md` |
 | `access-grants-revoke.spec.ts` | L3 access-grant remedy journey: denial → grant → admitted… → see `access-grants-revoke.spec.ts.AGENTS.md` |
 | `access-grant-dialog.spec.ts` | L3 for the access-grant prompt dialog + YOLO UI (change… → see `access-grant-dialog.spec.ts.AGENTS.md` |
 | `anthropic-bridge-activation.spec.ts` | L3 spec (change: add-flow-plugin-e2e-tests). → see `anthropic-bridge-activation.spec.ts.AGENTS.md` |
@@ -111,6 +119,7 @@ Files in this directory. One row per file. Non-source area (migrated from `docs/
 | `openspec-board-worktree-availability.spec.ts` | L3 worktree availability on the OpenSpec board (test-plan… → see `openspec-board-worktree-availability.spec.ts.AGENTS.md` |
 | `openspec-connect-coverage.spec.ts` | L3 connect coverage, fix-connect-snapshot-frame-loss… → see `openspec-connect-coverage.spec.ts.AGENTS.md` |
 | `openspec-init-affordances-folder.spec.ts` | L3 folder-section slice (add-openspec-init-affordances). → see `openspec-init-affordances-folder.spec.ts.AGENTS.md` |
+| `openspec-lifecycle-bar.spec.ts` | L3 compact-openspec-lifecycle-bar: board segment press opens artifact without drag (F9), 250 px… → see `openspec-lifecycle-bar.spec.ts.AGENTS.md` |
 | `openspec-locality-gate.spec.ts` | L3 spec (change: scope-openspec-auto-attach-to-session-cwd). → see `openspec-locality-gate.spec.ts.AGENTS.md` |
 | `optimistic-prompt.spec.ts` | Playwright E2E for optimistic-prompt-progress. Two faux… → see `optimistic-prompt.spec.ts.AGENTS.md` |
 | `out-of-cwd-session-diffs.spec.ts` | L3 spec (change: opt-in-out-of-cwd-session-diffs). Faux… → see `out-of-cwd-session-diffs.spec.ts.AGENTS.md` |
@@ -151,6 +160,8 @@ Files in this directory. One row per file. Non-source area (migrated from `docs/
 | `session-context-injection.spec.ts` | L3 context injection via `[[faux:echo-system-context]]`. → see `session-context-injection.spec.ts.AGENTS.md` |
 | `session-ended-orphan-heal.spec.ts` | L3 #F6/#F7: a session killed while holding a long-running… → see `session-ended-orphan-heal.spec.ts.AGENTS.md` |
 | `session-heap-settings.spec.ts` | L3 heap settings copy, save round-trip, coupling warning… → see `session-heap-settings.spec.ts.AGENTS.md` |
+| `session-history-load-state.spec.ts` | Playwright spec. History-load states: no empty flash on cold select (F11), card arc during multi-batch replay… → see `session-history-load-state.spec.ts.AGENTS.md` |
+| `session-list-group-by.spec.ts` | L3 Group by is server state: folder-menu radio → `group_by_prefs_updated` → chip; persists across reload… → see `session-list-group-by.spec.ts.AGENTS.md` |
 | `session-reap.spec.ts` | L3 gate on the reap fixture itself, driven headless over… → see `session-reap.spec.ts.AGENTS.md` |
 | `session-spawn.spec.ts` | Scenario spec 5.1, authoritative WS round-trip. Clears… → see `session-spawn.spec.ts.AGENTS.md` |
 | `session-state-honesty.spec.ts` | L3 rendered-honesty gate (change… → see `session-state-honesty.spec.ts.AGENTS.md` |
@@ -172,12 +183,14 @@ Files in this directory. One row per file. Non-source area (migrated from `docs/
 | `submodule-folder-grouping.spec.ts` | L3 checkout-root resolver (change… → see `submodule-folder-grouping.spec.ts.AGENTS.md` |
 | `streaming-latch-heal.spec.ts` | L3 (change: fix-stuck-streaming-status-latch, test-plan… → see `streaming-latch-heal.spec.ts.AGENTS.md` |
 | `superseded-heal.spec.ts` | Playwright spec (task 7.1, change… → see `superseded-heal.spec.ts.AGENTS.md` |
+| `system-one-settings.spec.ts` | L3 Decision models settings (change: add-system-one-registry… → see `system-one-settings.spec.ts.AGENTS.md` |
 | `tail-only-loading-head.spec.ts` | L3 for the loading head's TERMINAL states (F11, F13, F16 +… → see `tail-only-loading-head.spec.ts.AGENTS.md` |
 | `tail-only-scroll-perf.spec.ts` | ADVISORY opt-in scroll-smoothness probe for `tail-only`… → see `tail-only-scroll-perf.spec.ts.AGENTS.md` |
 | `tail-only-settings.spec.ts` | L3 for the `replayWindowMode` control (F14, F15) plus X8. → see `tail-only-settings.spec.ts.AGENTS.md` |
 | `tail-only-splice-anchor.spec.ts` | L3 gate for D7a (F9, F10, F18). Asserts the anchor BY THE… → see `tail-only-splice-anchor.spec.ts.AGENTS.md` |
 | `tail-only-trigger-suppression.spec.ts` | L3 for D7's suppression model (F5, F6, F8, F20). Asserts… → see `tail-only-trigger-suppression.spec.ts.AGENTS.md` |
 | `table-copy.spec.ts` | Playwright spec (change: fix-table-copy-empty-clipboard… → see `table-copy.spec.ts.AGENTS.md` |
+| `terminal-reload-inprocess.spec.ts` | L3 terminal-hosted (tmux) `/reload`: two reloads without touching TUI → one `completed` pill each, same pid,… → see `terminal-reload-inprocess.spec.ts.AGENTS.md` |
 | `terminal-tab.spec.ts` | Terminal-as-tab spec (change: terminals-in-tabbed-panes). → see `terminal-tab.spec.ts.AGENTS.md` |
 | `terminal.spec.ts` | Scenario 5.4 spec. `ensureGitSession`, clicks session card… → see `terminal.spec.ts.AGENTS.md` |
 | `tmux-session-shutdown.spec.ts` | L3 gate for the tmux shutdown leak (test-plan #T2): spawn… → see `tmux-session-shutdown.spec.ts.AGENTS.md` |
@@ -186,7 +199,9 @@ Files in this directory. One row per file. Non-source area (migrated from `docs/
 | `tool-created-files.spec.ts` | L3 spec (change: detect-tool-created-files, U1+U3).… → see `tool-created-files.spec.ts.AGENTS.md` |
 | `tool-output-links.spec.ts` | Playwright E2E for tool-output file-link behaviour… → see `tool-output-links.spec.ts.AGENTS.md` |
 | `tool-output-selection.spec.ts` | L3 selectable-tool-output-links (task 3.2). → see `tool-output-selection.spec.ts.AGENTS.md` |
+| `ui-token-alignment.spec.ts` | L3 token-recipe gate (test-plan F1–F9, F11, E10, X1). Computed contrast (canvas + composited ancestors — axe… → see `ui-token-alignment.spec.ts.AGENTS.md` |
 | `uncommitted-indicator-commit.spec.ts` | E2E uncommitted-indicator + commit-from-card. → see `uncommitted-indicator-commit.spec.ts.AGENTS.md` |
+| `untrusted-content-guard.spec.ts` | L3 #F1 (change: add-untrusted-content-guard): `[[faux:guard-confirm]]` → `stub_fetch` untrusted HTML → guard… → see `untrusted-content-guard.spec.ts.AGENTS.md` |
 | `worktree-grouping-survives-remove.spec.ts` | L3 fix-worktree-grouping-lost-on-remove. → see `worktree-grouping-survives-remove.spec.ts.AGENTS.md` |
 | `worktree-init-feedback.spec.ts` | Playwright E2E for friendly worktree-init feedback (Level… → see `worktree-init-feedback.spec.ts.AGENTS.md` |
 | `zrok-v2-tunnel.spec.ts` | L3 (change: support-zrok-v2, F1/F2/F3). Stubs… → see `zrok-v2-tunnel.spec.ts.AGENTS.md` |

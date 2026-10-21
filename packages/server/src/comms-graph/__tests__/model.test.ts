@@ -1,0 +1,315 @@
+/**
+ * The client model, on fixtures — the failing-first half of the sub-app.
+ *
+ * `public/mobile/src/subagents.js` is tested from the server package by
+ * importing the static ES module directly (`mobile-subagents.test.ts`). This
+ * file does the same for `public/graph/src/model.js`: the sub-app has no build
+ * step, so its module IS the unit, and a test that only looked at pixels would
+ * be testing the canvas, not the decisions.
+ *
+ * What is asserted here is the decisions a person reads: which nodes exist,
+ * which are folded, which messages a click shows, and that the folding is what
+ * makes 100+ sessions legible.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  ancestorKeys,
+  clusterByLead,
+  dataRouteCandidates,
+  labelSetFor,
+  isGraphResponse,
+  isFinished,
+  leadList,
+  messagesForNode,
+  recency,
+  selectGraph,
+  stateOf,
+  WINDOWS,
+} from "../../../../../public/graph/src/model.js";
+
+const NOW = Date.parse("2026-09-30T15:00:00.000Z");
+const ago = (mins) => new Date(NOW - mins * 60_000).toISOString();
+
+function node(key, over = {}) {
+  return {
+    key,
+    name: key,
+    kind: "lead",
+    parent: null,
+    depth: 0,
+    state: "idle",
+    lastActivityAt: ago(1),
+    gone: false,
+    ...over,
+  };
+}
+
+describe("stateOf — what colour a node is drawn in", () => {
+  it("lets gone win over any recorded state", () => {
+    expect(stateOf(node("a", { gone: true, state: "working" }), NOW)).toBe("gone");
+  });
+  it("calls a quiet worker STALLED rather than working", () => {
+    // 45 minutes is the threshold `atelier-prime-lead stalls` uses.
+    const quiet = node("a", { state: "streaming", lastActivityAt: ago(50) });
+    expect(stateOf(quiet, NOW)).toBe("stalled");
+    const fresh = node("a", { state: "streaming", lastActivityAt: ago(2) });
+    expect(stateOf(fresh, NOW)).toBe("streaming");
+  });
+  it("does not invent a state it does not have", () => {
+    expect(stateOf(node("a", { state: null }), NOW)).toBe("unknown");
+  });
+});
+
+describe("the time windows", () => {
+  const g = {
+    nodes: [node("a"), node("b")],
+    edges: [
+      { kind: "message", from: "a", to: "b", count: 5, firstAt: ago(200), lastAt: ago(200), lines: [] },
+      { kind: "message", from: "a", to: "b", count: 1, firstAt: ago(5), lastAt: ago(5), lines: [] },
+    ],
+    recent: [],
+  };
+  it("offers exactly the three the brief asks for", () => {
+    expect(WINDOWS.map((w) => w.id)).toEqual(["15m", "1h", "today"]);
+  });
+  it("a 15 minute window drops the edge that last spoke 200 minutes ago", () => {
+    const s = selectGraph(g, { windowMs: WINDOWS[0].ms }, NOW);
+    expect(s.edges).toHaveLength(1);
+    expect(s.edges[0].count).toBe(1);
+  });
+});
+
+describe("subtree filtering keeps the conversation, not just the family", () => {
+  const g = {
+    nodes: [node("leadA"), node("kid", { parent: "leadA", kind: "child" }), node("peer")],
+    edges: [
+      { kind: "message", from: "leadA", to: "kid", count: 1, firstAt: ago(1), lastAt: ago(1), lines: [] },
+      { kind: "message", from: "leadA", to: "peer", count: 1, firstAt: ago(1), lastAt: ago(1), lines: [] },
+    ],
+    recent: [],
+  };
+  it("walks up the parent chain", () => {
+    expect(ancestorKeys(g.nodes)("kid")).toEqual(["leadA"]);
+  });
+  it("keeps a lead's peer, because that exchange is why you are here", () => {
+    const s = selectGraph(g, { subtree: "leadA" }, NOW);
+    expect(s.nodes.map((n) => n.key).sort()).toEqual(["kid", "leadA", "peer"]);
+  });
+});
+
+describe("clustering is what makes 100+ sessions readable", () => {
+  function big() {
+    const nodes = [node("lead1")];
+    for (let i = 0; i < 40; i++) {
+      nodes.push(node(`kid${i}`, { parent: "lead1", kind: "child", gone: i % 3 === 0 }));
+    }
+    return { nodes, edges: [], recent: [] };
+  }
+  it("folds a lead's children into the lead, keeping the count", () => {
+    const c = clusterByLead(big(), { collapse: true });
+    expect(c.nodes).toHaveLength(1);
+    expect(c.nodes[0].cluster).toBe(true);
+    expect(c.nodes[0].childCount).toBe(40);
+    expect(c.nodes[0].childGone).toBe(14);
+  });
+  it("expands one lead on click without touching the others", () => {
+    const many = { nodes: [node("lead1"), node("kid", { parent: "lead1", kind: "child" }), node("lead2"), node("kid2", { parent: "lead2", kind: "child" })], edges: [], recent: [] };
+    const c = clusterByLead(many, { collapse: true, expanded: new Set(["lead1"]) });
+    expect(c.nodes.map((n) => n.key).sort()).toEqual(["kid", "lead1", "lead2"]);
+  });
+  it("is a no-op when collapse is off", () => {
+    const g = big();
+    expect(clusterByLead(g, { collapse: false }).nodes).toHaveLength(41);
+  });
+});
+
+describe("clicking a node", () => {
+  // Oldest first, exactly as the indexer appends it (file order). Getting this
+  // fixture backwards is how a "recent messages" panel ends up showing them in
+  // reverse, so the order is part of the contract and not an accident.
+  const recent = [
+    { at: ago(3), firstLine: "three", from: "c", to: "d" },
+    { at: ago(2), firstLine: "two", from: "b", to: "a" },
+    { at: ago(1), firstLine: "one", from: "a", to: "b" },
+  ];
+  it("shows its messages, newest first, and only its own", () => {
+    const m = messagesForNode(recent, "a");
+    expect(m.map((x) => x.firstLine)).toEqual(["one", "two"]);
+  });
+  it("lists the leads that have a subtree, for the filter", () => {
+    const list = leadList([node("leadA"), node("kid", { parent: "leadA", kind: "child" }), node("leadB")]);
+    expect(list[0].key).toBe("leadA");
+    expect(list[0].children).toBe(1);
+  });
+});
+
+describe("isFinished — what the hide-finished filter removes", () => {
+  it("is true for gone and for ended", () => {
+    expect(isFinished(node("a", { gone: true }), NOW)).toBe(true);
+    expect(isFinished(node("a", { state: "ended" }), NOW)).toBe(true);
+    expect(isFinished(node("a"), NOW)).toBe(false);
+  });
+  it("is true for a node quiet for over an hour", () => {
+    expect(isFinished(node("a", { lastActivityAt: ago(90) }), NOW)).toBe(true);
+  });
+});
+
+describe("recency reads as words", () => {
+  it("renders seconds, minutes, hours, days", () => {
+    expect(recency(ago(0.5), NOW)).toBe("30s");
+    expect(recency(ago(5), NOW)).toBe("5m");
+    expect(recency(ago(180), NOW)).toBe("3h");
+    expect(recency(ago(60 * 24), NOW)).toBe("1d");
+    expect(recency(ago(180 * 24), NOW)).toBe("3d");
+  });
+});
+
+describe("the data route is tried relative first, then absolute", () => {
+  it("puts the gateway's same-prefix route first", () => {
+    expect(dataRouteCandidates("/graph/")).toEqual(["/graph/api/graph", "/api/comms/graph"]);
+  });
+  it("resolves against the directory the page is actually served from", () => {
+    expect(dataRouteCandidates("/graph/index.html")).toEqual(["/graph/api/graph", "/api/comms/graph"]);
+    expect(dataRouteCandidates("/somewhere/else/graph/")[0]).toBe("/somewhere/else/graph/api/graph");
+  });
+  it("never proposes a cross-origin URL", () => {
+    for (const c of dataRouteCandidates("/graph/")) expect(c.startsWith("/")).toBe(true);
+  });
+});
+
+describe("a 200 is not proof the route exists", () => {
+  it("accepts only a JSON 200", () => {
+    expect(isGraphResponse(200, "application/json; charset=utf-8")).toBe(true);
+    expect(isGraphResponse(200, "text/html; charset=utf-8")).toBe(false);
+    expect(isGraphResponse(200, null)).toBe(false);
+  });
+  it("rejects a miss whatever the content type says", () => {
+    expect(isGraphResponse(404, "application/json")).toBe(false);
+    expect(isGraphResponse(500, "application/json")).toBe(false);
+  });
+});
+
+describe("hide finished is a filter, not a checkbox", () => {
+  const g = {
+    nodes: [node("live", { state: "working", lastActivityAt: ago(1) }), node("done", { state: "ended", lastActivityAt: ago(60) }), node("dead", { gone: true })],
+    edges: [{ kind: "message" as const, from: "live", to: "done", count: 1, firstAt: ago(2), lastAt: ago(2), lines: [], gone: false }],
+  };
+  const shown = (hideFinished: boolean, focus: string | null = null) =>
+    selectGraph(g, { windowMs: 24 * 3600_000, hideFinished, focus }, NOW).nodes.map((n) => n.key);
+
+  it("drops ended and gone nodes when it is on", () => {
+    expect(shown(true)).toEqual(["live"]);
+  });
+  it("keeps the finished ones that still have edges when it is off", () => {
+    // "dead" is absent in both cases, and that is NOT the finished filter: a node
+    // with no edge in the window is not drawn at all, finished or not. The
+    // filter is about `done`, which the edge list still reaches.
+    expect(shown(false).sort()).toEqual(["done", "live"]);
+  });
+  it("keeps a finished node the reader explicitly focused", () => {
+    expect(shown(true, "done")).toContain("done");
+  });
+  it("drops the edges to what it dropped", () => {
+    expect(selectGraph(g, { windowMs: 24 * 3600_000, hideFinished: true }, NOW).edges).toEqual([]);
+  });
+});
+
+describe("the busiest hub always gets its name", () => {
+  // The screenshot that motivated this: at 528 nodes the dominant hub - the one
+  // with ~25 children radiating from it - was UNLABELLED, because the label
+  // budget scores on messages and that node is quiet. It is the single node a
+  // reader most wants named, and the score said no.
+  const edgesFor = (hub: string, spokes: number) =>
+    Array.from({ length: spokes }, (_, i) => ({
+      kind: "message" as const,
+      from: hub,
+      to: `spoke-${i}`,
+      count: 1,
+      firstAt: ago(5),
+      lastAt: ago(5),
+      lines: [],
+      gone: false,
+    }));
+
+  it("labels a high-degree node even when it is quiet and outside the budget", () => {
+    const nodes = [node("hub"), ...Array.from({ length: 60 }, (_, i) => node(`spoke-${i}`)), ...Array.from({ length: 10 }, (_, i) => node(`chatty-${i}`, { messagesIn: 9, messagesOut: 9 }))];
+    const keep = labelSetFor(nodes, edgesFor("hub", 25), { cap: 12 });
+    expect(keep.has("hub")).toBe(true);
+    // and the budget still holds for everything else
+    expect(keep.size).toBeLessThanOrEqual(14);
+  });
+
+  it("uses degree in the DRAWN graph, not message count", () => {
+    const nodes = [node("a"), node("b")];
+    const edges = [
+      { kind: "message" as const, from: "a", to: "b", count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
+      { kind: "message" as const, from: "a", to: "b", count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
+    ];
+    const keep = labelSetFor(nodes, edges, { cap: 1 });
+    expect(keep.has("a")).toBe(true);
+  });
+
+  // The fixture that makes the guarantee FIRE, and the reason the old one
+  // could not. A REGULAR graph can never trigger a `2 x median` rule: every
+  // node equals the median, so the floor is above every degree and the hub set
+  // is empty. The first version of this test used a 4-regular ring, asserted
+  // `<= cap + 8`, and passed with MAX_HUB_LABELS set to 100000 - a test that
+  // could not fail, guarding the one thing that makes the promise safe.
+  //
+  // SKEWED is the shape the rule exists for: 12 connectors, each wired to 10
+  // leaves; 30 leaves at degree 4. median = 4, floor = 8, so all 12 connectors
+  // qualify and the cap has to bite.
+  const skewed = () => {
+    const leaves = Array.from({ length: 30 }, (_, i) => node(`leaf-${i}`));
+    const hubs = Array.from({ length: 12 }, (_, i) => node(`hub-${i}`));
+    const edges = hubs.flatMap((h, i) =>
+      Array.from({ length: 10 }, (_, j) => ({
+        kind: "message" as const,
+        from: h.key,
+        to: leaves[(i * 3 + j) % 30].key,
+        count: 1,
+        firstAt: ago(5),
+        lastAt: ago(5),
+        lines: [],
+        gone: false,
+      })),
+    );
+    // Leaves first, so the score-based budget spends itself on leaves and the
+    // hub count in `keep` is unambiguously the cap doing its job.
+    return { nodes: [...leaves, ...hubs], edges };
+  };
+
+  it("actually fires on a skewed graph - the guarantee is not vacuous", () => {
+    const g = skewed();
+    const keep = labelSetFor(g.nodes, g.edges, { cap: 4 });
+    // 12 nodes qualify as hubs; the cap admits 8. With MAX_HUB_LABELS removed
+    // this becomes 12 and the next assertion fails, which is the point.
+    const hubsLabelled = g.nodes.filter((n) => n.key.startsWith("hub-") && keep.has(n.key)).length;
+    expect(hubsLabelled).toBe(8);
+    expect(keep.size).toBe(12);
+  });
+
+  it("stays bounded when the promise would otherwise flood the canvas", () => {
+    const g = skewed();
+    expect(labelSetFor(g.nodes, g.edges, { cap: 4 }).size).toBeLessThanOrEqual(4 + 8);
+  });
+
+  it("is silent on a regular graph, and that is structural, not a near miss", () => {
+    const nodes = Array.from({ length: 40 }, (_, i) => node(`n-${i}`));
+    const edges = nodes.flatMap((n, i) => [
+      { kind: "message" as const, from: n.key, to: nodes[(i + 1) % 40].key, count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
+      { kind: "message" as const, from: n.key, to: nodes[(i + 2) % 40].key, count: 1, firstAt: ago(1), lastAt: ago(1), lines: [], gone: false },
+    ]);
+    // Every node has degree 4, so the median is 4 and the floor is 8: nothing
+    // can reach it. Asserted so the next reader knows this shape cannot
+    // exercise the rule, instead of rediscovering it.
+    const keep = labelSetFor(nodes, edges, { cap: 12 });
+    expect(keep.size).toBe(12);
+  });
+
+  it("labels everything when the graph is small enough to fit", () => {
+    const nodes = [node("a"), node("b"), node("c")];
+    const keep = labelSetFor(nodes, [], { cap: 12 });
+    expect(keep.size).toBe(3);
+  });
+});
