@@ -16,8 +16,6 @@ dist
 !.pi/skills
 openspec
 
-# scripts/build-image.sh: its output/evidence are not build inputs, and the script itself
-# stays out of the image so /app/scripts matches the running build.
+# scripts/build-image.sh output and build evidence are not build inputs
 out/
 runs/
-scripts/build-image.sh

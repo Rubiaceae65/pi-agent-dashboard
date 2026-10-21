@@ -863,19 +863,17 @@ packages/
 
 ## Building the image
 
-The release image `rubiaceae65/dashboard` is built from ONE commit with ONE command (clean tree required):
+The image is built from ONE commit with ONE command (clean tree required):
 
 ```sh
-scripts/build-image.sh push dev-<N>     # or: scripts/build-image.sh build   (no push)
+scripts/build-image.sh build [<image-ref>]     # default pi-dashboard:local (the image of docker/compose.yml)
 ```
 
-It runs `docker buildx build` on `release-image/dashboard/Dockerfile.release` (every base image pinned by digest),
-labels the image `org.opencontainers.image.revision=<HEAD sha>` / `org.opencontainers.image.source`,
-exports a reproducible OCI archive (`SOURCE_DATE_EPOCH` = commit time, `rewrite-timestamp=true`) to
-`out/dashboard.oci.tar`, writes the manifest digest to `out/dashboard.digest` and an SPDX SBOM to
-`out/dashboard.sbom.json`, and with `push` copies the archive as-is to
-`${REGISTRY:-10.99.227.241:32500}/rubiaceae65/dashboard:<tag>` and checks the pushed digest.
-Needs git, docker + buildx, skopeo, syft. Build evidence lives under `runs/`.
+It runs `docker buildx build --load` of `docker/Dockerfile` (base `node:24-bookworm-slim` pinned by digest, global
+npm installs resolved as of `NPM_BEFORE`), labelled `org.opencontainers.image.revision=<HEAD sha>`,
+`org.opencontainers.image.source`, `org.opencontainers.image.version` (package.json) and `title`;
+`SOURCE_DATE_EPOCH` = the commit time. A release tags it `<registry>/rubiaceae65/dashboard:<version>` and pushes it.
+Not bit-reproducible yet: apt packages and the corepack/pnpm download are unpinned. Earlier build evidence lives under `runs/`.
 
 ## Building the Electron app
 
