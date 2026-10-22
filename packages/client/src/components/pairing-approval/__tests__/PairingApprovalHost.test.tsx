@@ -195,13 +195,18 @@ describe("PairingApprovalHost", () => {
       return { hint: () => act(() => handlers.forEach((h) => h(HINT))) };
     }
     afterEach(() => vi.unstubAllGlobals());
+    /** Drain the status fetch → json → operator check → (maybe) list chain. */
+    const settle = () =>
+      act(async () => {
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      });
 
     it("operator=false (front-door owner): no GET /api/pair/pending, on mount or on a hint", async () => {
       const calls = stubFetch({ authenticated: true, authEnabled: false, operator: false });
       const m = mount();
       await waitFor(() => expect(calls.some((u) => u.endsWith("/auth/status"))).toBe(true));
       await m.hint();
-      await new Promise((r) => setTimeout(r, 20));
+      await settle();
       expect(calls.filter((u) => u.includes("/api/pair/pending"))).toEqual([]);
       expect(calls.filter((u) => u.endsWith("/auth/status"))).toHaveLength(1);
       expect(screen.queryByTestId("pairing-dialog")).toBeNull();
@@ -211,7 +216,7 @@ describe("PairingApprovalHost", () => {
       const calls = stubFetch({ authenticated: true, authEnabled: false });
       mount();
       await waitFor(() => expect(calls.some((u) => u.endsWith("/auth/status"))).toBe(true));
-      await new Promise((r) => setTimeout(r, 20));
+      await settle();
       expect(calls.filter((u) => u.includes("/api/pair/pending"))).toEqual([]);
     });
 
