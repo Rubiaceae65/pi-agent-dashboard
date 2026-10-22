@@ -33,6 +33,7 @@ All knobs live in `.env` (copy from `.env.example`). Highlights:
 | `PI_SPAWN_STRATEGY` | `tmux` | Session spawn strategy: `headless` or `tmux` |
 | `TUNNEL_ENABLED` | `1` | `0` passes `--no-tunnel`; set `ZROK_TOKEN` to enroll |
 | `PI_DASHBOARD_TRUSTED_NETWORKS` | — | Trusted socket-peer sources declared by the deployment, e.g. an SSO reverse proxy's upstream address (`10.244.0.243/32`). Comma/space-separated exact IPv4/IPv6 addresses or IPv4 CIDRs `/8`–`/32`; wildcards, hostnames, `/0` and broader-than-`/8` ranges, and IPv6 CIDRs are dropped with a warning. Merged into the effective trusted list at load, never written to `config.json`, not removable in the UI, and not a CORS origin allowance. Matches the TCP peer only — `X-Forwarded-For` is never trusted. Only list an address the authenticating proxy alone uses. |
+| `PI_DASHBOARD_LINKS_FILE` | — | Path to a JSON file of links the `/links/` page shows (served read-only at `/links/links.json`). Unset → the page shows "Links are not configured"; there is no built-in list. Format and example: see [Links page](../README.md#links-page-links) and `docker/links.example.json`. |
 | `MEM_LIMIT` | `4g` | Container memory ceiling |
 
 API keys are seeded **once**: the first run writes `auth.json` into the

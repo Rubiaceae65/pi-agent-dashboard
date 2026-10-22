@@ -193,6 +193,7 @@ import { registerNodeRuntimeRoutes } from "./routes/node-runtime-routes.js";
 import { registerOpenSpecGroupRoutes } from "./routes/openspec-group-routes.js";
 import { registerOpenSpecRoutes } from "./routes/openspec-routes.js";
 import { registerPackageRoutes } from "./routes/package-routes.js";
+import { registerLinksConfigRoute } from "./routes/links-config-route.js";
 import { PUBLIC_PAIRING_PREFIXES, registerPairingRoutes } from "./routes/pairing-routes.js";
 import { registerPiChangelogRoutes } from "./routes/pi-changelog-routes.js";
 import { registerPiCoreRoutes } from "./routes/pi-core-routes.js";
@@ -2289,6 +2290,9 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
   registerStaticSubAppRoute(fastify, LINKS_PREFIX);
   registerStaticSubAppRoute(fastify, GRAPH_PREFIX);
   registerCommsGraphRoute(fastify);
+  // `/links/links.json` — the deployment's links (PI_DASHBOARD_LINKS_FILE);
+  // the page ships no inventory of its own.
+  registerLinksConfigRoute(fastify);
 
   // Dynamic PWA manifest — MUST be registered before fastify-static so
   // explicit route matching wins over the static asset. See change:

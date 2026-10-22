@@ -51,8 +51,8 @@ const SUB_APPS = [
   },
   {
     prefix: LINKS_PREFIX,
-    /** Handed over by lead links-page-20260929, workshop-map@034ba51. */
-    marker: "Workshop links",
+    /** The links page's own <title>; the dashboard shell's is different. */
+    marker: "<title>Links</title>",
     what: "the workshop-map links page",
   },
 ] as const;
@@ -146,14 +146,21 @@ describe("each sub-app is served same-origin from the client build", () => {
     });
   }
 
-  it("serves the links page with its six dev-system cards", async ({ skip }) => {
+  it("serves the links page with NO baked inventory (no IPs, no plain http)", async ({ skip }) => {
     requireBuilt(LINKS_PREFIX, skip);
     const body = await (await fetch(`${base}${LINKS_PREFIX}/`)).text();
-    // Handed over as a build artefact (workshop-map, `make links`). The count
-    // is the other half of the proof: a page that lost half its cards would
-    // still contain the title and pass a marker-only check.
-    const cards = body.split('"devSystem": true').length - 1;
-    expect(cards, "dev-system card count changed — regenerate with `make links`").toBe(6);
+    // rc-suites RC 0011: the page used to ship one dev system's tailnet/LAN
+    // addresses over http — mixed content behind the door, and R3.4 (own DNS
+    // only, no IPs). The links now come from the deployment (./links.json).
+    expect(body).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    expect(body).not.toContain("http://");
+    expect(body).toContain("./links.json");
+  });
+
+  it("GET /links/links.json with PI_DASHBOARD_LINKS_FILE unset: not configured, no links", async () => {
+    const res = await fetch(`${base}${LINKS_PREFIX}/links.json`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ configured: false, links: [], dropped: 0 });
   });
 });
 
