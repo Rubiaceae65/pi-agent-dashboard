@@ -202,6 +202,9 @@ describe("standalone CLI — no resourcesPath, no regression", () => {
     const r = freshRegistry({
       platform: "linux",
       resourcesPath: undefined,
+      // A host interpreter that is NOT the PATH hit (see whereStrategy's
+      // execPath seam); otherwise a host whose node is /usr/bin/node fails.
+      execPath: "/opt/test-host/bin/node",
       exists: () => false,
       which: (n) => (n === "node" ? "/usr/bin/node" : null),
     });

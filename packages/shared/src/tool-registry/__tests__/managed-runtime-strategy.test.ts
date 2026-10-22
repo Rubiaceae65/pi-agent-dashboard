@@ -23,7 +23,10 @@ import {
   OverridesStore,
 } from "../index.js";
 
+const HOST_EXEC_PATH = "/opt/test-host/bin/node";
+
 function freshRegistry(opts: {
+  execPath?: string;
   exists?: (p: string) => boolean;
   which?: (name: string) => string | null;
   overrides?: Record<string, string>;
@@ -43,6 +46,10 @@ function freshRegistry(opts: {
     exists: opts.exists ?? (() => false),
     which: opts.which ?? (() => null),
     npmRootGlobal: () => "",
+    // A fake host interpreter, so the PATH strategy's self-hit rule compares
+    // against THIS and not the real process.execPath (which is /usr/bin/node
+    // on some hosts - the same path these fixtures return from `which`).
+    execPath: opts.execPath ?? HOST_EXEC_PATH,
   });
   return r;
 }
@@ -101,6 +108,21 @@ describe("node: managed-runtime strategy precedence", () => {
     expect(res.ok).toBe(true);
     expect(res.path).toBe("/usr/bin/node");
     expect(res.source).toBe("system");
+  });
+
+  it("the PATH self-hit rule reads the injected execPath, not the host's", () => {
+    // Pins the seam: when the injected interpreter IS the PATH hit, the where
+    // strategy reports a self-hit. Before the seam this depended on where the
+    // test host's own node lived.
+    const r = freshRegistry({
+      platform: "linux",
+      execPath: "/usr/bin/node",
+      exists: () => false,
+      which: (name) => (name === "node" ? "/usr/bin/node" : null),
+    });
+    const res = r.resolve("node");
+    expect(res.ok).toBe(false);
+    expect(res.tried.find((t) => t.strategy === "where")?.result).toBe("appimage-self-hit: /usr/bin/node");
   });
 
   it("nothing present → ok:false with diagnostic trail", () => {

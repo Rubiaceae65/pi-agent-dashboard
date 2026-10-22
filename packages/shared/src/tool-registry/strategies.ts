@@ -537,13 +537,18 @@ export function npmGlobalStrategy(
  * See change: fix-electron-appimage-cli-self-detection (D2).
  */
 export function whereStrategy(binaryName: string, deps?: StrategyDeps): Strategy {
-  const { which } = d(deps);
+  // `execPath` through the seam (default `process.execPath`, so production is
+  // unchanged): the self-hit rule compares the PATH hit against the running
+  // interpreter, and reading `process.execPath` directly leaked the host into
+  // tests - on a machine whose node IS `/usr/bin/node`, a fake `which` result
+  // of `/usr/bin/node` was rejected as a self-hit.
+  const { which, execPath } = d(deps);
   return {
     name: "where",
     run(): StrategyResult {
       const p = which(binaryName);
       if (!p) return { ok: false, reason: `not found on PATH` };
-      if (isAppImageSelfHit(p)) {
+      if (isAppImageSelfHit(p, { execPath })) {
         return { ok: false, reason: `appimage-self-hit: ${p}` };
       }
       return { ok: true, path: p };
