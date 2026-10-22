@@ -178,6 +178,7 @@ import { registerKnownServersRoutes } from "./routes/known-servers-routes.js";
 import { registerLiveServerRoutes } from "./routes/live-server-routes.js";
 import { registerManifestRoute } from "./routes/manifest-route.js";
 import { registerCommsGraphRoute } from "./comms-graph/route.js";
+import { canonicalizeSubAppUrl } from "./lib/static-subapps.js";
 import {
   GRAPH_PREFIX,
   LINKS_PREFIX,
@@ -1376,6 +1377,9 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
     logger: false,
     keepAliveTimeout: 30_000,
     connectionTimeout: 10_000,
+    // `/mobile/api/sessions` etc. → canonical path, before routing and every
+    // gate (a door may route only `/mobile/`). See lib/static-subapps.ts.
+    rewriteUrl: (req) => canonicalizeSubAppUrl(req.url ?? "/"),
   });
 
   // Route inventory (test-only): fires as each route registers, before listen,
@@ -3041,6 +3045,9 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
 
       // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: legacy server wiring, grandfathered; decompose in a dedicated refactor, not piecemeal
       fastify.server.on("upgrade", (request, socket, head) => {
+        // `/mobile/ws` → `/ws` before any gate reads the URL (same alias as
+        // the HTTP `rewriteUrl` above; lib/static-subapps.ts).
+        request.url = canonicalizeSubAppUrl(request.url ?? "/");
         // Ephemeral single-use ticket (D11) bound to the requested WS route
         // scope. The one cheap read BEFORE the first gate — the host-admission
         // log line names the scope.

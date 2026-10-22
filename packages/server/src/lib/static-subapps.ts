@@ -48,3 +48,26 @@ export const GRAPH_PREFIX = "/graph";
  * the direction to err in.
  */
 export const SUB_APP_PREFIXES: readonly string[] = [MOBILE_PREFIX, LINKS_PREFIX, GRAPH_PREFIX];
+
+/**
+ * The phone client's endpoints, also reachable UNDER its own prefix.
+ *
+ * Behind a front door that routes only `/mobile/` to the dashboard (finca's
+ * ops.door: `PathPrefix /mobile/`, no rewrite), origin-root `/api/...` and
+ * `/ws` are not the dashboard — the page loaded and then 404'd on
+ * `/api/sessions` and `/api/ws-ticket` (rc-suites RC 0011 recheck). The page
+ * now addresses them relative to itself (`./api/sessions`, `./ws`), and the
+ * server maps exactly these paths back to the canonical ones BEFORE routing
+ * and before every gate (Fastify `rewriteUrl`; the WS upgrade handler), so a
+ * request under the prefix is handled — and guarded — exactly as the
+ * canonical one. Only the three endpoints the page uses are aliased.
+ */
+const MOBILE_ALIASED = ["/api/sessions", "/api/ws-ticket", "/ws"];
+
+export function canonicalizeSubAppUrl(url: string): string {
+  if (!url.startsWith(`${MOBILE_PREFIX}/`)) return url;
+  const rest = url.slice(MOBILE_PREFIX.length);
+  const q = rest.search(/[?#]/);
+  const pathname = q === -1 ? rest : rest.slice(0, q);
+  return MOBILE_ALIASED.includes(pathname) ? rest : url;
+}

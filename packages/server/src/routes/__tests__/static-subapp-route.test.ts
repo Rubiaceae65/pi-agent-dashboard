@@ -33,7 +33,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { WebSocket } from "ws";
 import { resolveStaticClientDir } from "../../lib/client-dist.js";
+import { canonicalizeSubAppUrl } from "../../lib/static-subapps.js";
 import { createServer, type DashboardServer } from "../../server.js";
 import { LINKS_PREFIX, MOBILE_PREFIX } from "../static-subapp-route.js";
 
@@ -261,3 +263,56 @@ describe("no documentation is placed in the served tree", () => {
   });
 });
 
+
+/**
+ * `/mobile/` behind a front door that routes ONLY `/mobile/` to the dashboard
+ * (finca ops.door). The phone client used origin-root `/api/sessions`,
+ * `/api/ws-ticket` and `/ws`, which there are not the dashboard → 404
+ * (rc-suites RC 0011 recheck). The page now addresses them under its own
+ * prefix and the server maps exactly those back to the canonical routes.
+ */
+describe("/mobile/ endpoints are reachable under the prefix", () => {
+  it("canonicalizeSubAppUrl maps only the phone client's three endpoints", () => {
+    expect(canonicalizeSubAppUrl("/mobile/api/sessions")).toBe("/api/sessions");
+    expect(canonicalizeSubAppUrl("/mobile/api/ws-ticket")).toBe("/api/ws-ticket");
+    expect(canonicalizeSubAppUrl("/mobile/ws?ticket=abc")).toBe("/ws?ticket=abc");
+    for (const u of ["/mobile/", "/mobile/src/app.js", "/mobile/api/config", "/mobile/api/sessions/x", "/mobile/wsx", "/api/sessions", "/links/api/sessions"]) {
+      expect(canonicalizeSubAppUrl(u), u).toBe(u);
+    }
+  });
+
+  it("GET /mobile/api/sessions answers like /api/sessions", async () => {
+    const a = await fetch(`${base}/api/sessions`);
+    const b = await fetch(`${base}${MOBILE_PREFIX}/api/sessions`);
+    expect(b.status).toBe(a.status);
+    expect(b.headers.get("content-type") ?? "").toContain("application/json");
+    expect(Object.keys(await b.json()).sort()).toEqual(Object.keys(await a.json()).sort());
+  });
+
+  it("POST /mobile/api/ws-ticket mints a ticket that opens /mobile/ws", async () => {
+    const r = await fetch(`${base}${MOBILE_PREFIX}/api/ws-ticket`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope: "browser" }),
+    });
+    expect(r.status).toBe(200);
+    const ticket = (await r.json()).data.ticket as string;
+    const ws = new WebSocket(`${base.replace("http:", "ws:")}${MOBILE_PREFIX}/ws?ticket=${encodeURIComponent(ticket)}`);
+    const opened = await new Promise<boolean>((resolve) => {
+      ws.once("open", () => resolve(true));
+      ws.once("error", () => resolve(false));
+      ws.once("close", () => resolve(false));
+    });
+    ws.close();
+    expect(opened).toBe(true);
+  });
+
+  it("the phone client addresses no endpoint at the origin root", () => {
+    const app = fs.readFileSync(path.resolve(__dirname, "../../../../../public/mobile/src/app.js"), "utf8");
+    expect(app).not.toMatch(/fetch\(\s*['"`]\//);
+    expect(app).not.toMatch(/location\.host\}\/ws/);
+    expect(app).toContain("endpoint('api/sessions')");
+    expect(app).toContain("endpoint('api/ws-ticket')");
+    expect(app).toContain("endpoint('ws')");
+  });
+});

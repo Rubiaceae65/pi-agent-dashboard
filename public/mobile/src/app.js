@@ -43,6 +43,13 @@ const state = {
 };
 
 // ── transport ────────────────────────────────────────────────
+// Every endpoint is addressed RELATIVE to this page (`/mobile/api/...`,
+// `/mobile/ws`), never origin-root: a front door may route only `/mobile/` to
+// the dashboard (ops.door), where `/api/...` is not the dashboard and 404s. The
+// server maps these back to the canonical paths (lib/static-subapps.ts).
+const PAGE_BASE = new URL('./', location.href);
+const endpoint = (p) => new URL(p, PAGE_BASE).href;
+
 function setStatus(kind, text) {
   const dot = $('#dot');
   if (dot) dot.className = 'dot ' + kind;
@@ -51,7 +58,7 @@ function setStatus(kind, text) {
 }
 
 async function mintTicket() {
-  const r = await fetch('/api/ws-ticket', {
+  const r = await fetch(endpoint('api/ws-ticket'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ scope: 'browser' }),
@@ -63,8 +70,10 @@ async function mintTicket() {
 
 function connect() {
   mintTicket().then((ticket) => {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}/ws?ticket=${encodeURIComponent(ticket)}`);
+    const u = new URL(endpoint('ws'));
+    u.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    u.searchParams.set('ticket', ticket);
+    const ws = new WebSocket(u.href);
     state.ws = ws;
     ws.onopen = () => {
       state.attempt = 0;
@@ -89,7 +98,7 @@ const send = (o) => state.ws && state.ws.readyState === 1 && state.ws.send(JSON.
 // ── data ─────────────────────────────────────────────────────
 async function loadSessions() {
   try {
-    const r = await fetch('/api/sessions');
+    const r = await fetch(endpoint('api/sessions'));
     if (!r.ok) throw new Error('sessions ' + r.status);
     const j = await r.json();
     state.sessions = j.data || [];
