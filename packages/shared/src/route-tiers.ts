@@ -69,6 +69,10 @@ export const ROUTE_TIERS: readonly RouteTierEntry[] = [
   { method: "GET", path: "/api/browse", tier: "observe" },
   { method: "GET", path: "/api/browse/flags", tier: "observe" },
   { method: "GET", path: "/api/canvas-types", tier: "observe" },
+  // The /graph/ sub-app's read-only feed: session names, spawn/relay edges and
+  // redacted first lines - the same class of data as GET /api/sessions and
+  // GET /api/events/:sessionId/:seq, so the same `observe` tier.
+  { method: "GET", path: "/api/comms/graph", tier: "observe" },
   { method: "GET", path: "/api/config", tier: "operate" },
   { method: "GET", path: "/api/cost-estimator/telemetry", tier: "observe" },
   { method: "GET", path: "/api/custom-event-groups", tier: "observe" },

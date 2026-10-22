@@ -58,6 +58,7 @@ export const DENYLIST: readonly DenylistEntry[] = [
   { pattern: "/api/pinned-dirs", reason: "UI-only" },
   { pattern: "/api/favorite-models", reason: "UI-only" },
   { pattern: "/api/custom-event-groups", reason: "UI-only" },
+  { pattern: "/api/comms/graph", reason: "comms-graph sub-app polling feed (/graph/); UI-only" },
   { pattern: "/api/canvas-types", reason: "UI-only" },
   { pattern: "/api/diagram/render", reason: "UI-only" },
   { pattern: "/api/host-gate", reason: "host admission internals" },
