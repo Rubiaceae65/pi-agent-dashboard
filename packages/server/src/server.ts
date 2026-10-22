@@ -46,6 +46,7 @@ import { YOLO_ENV } from "./access/yolo-env.js";
 import { YoloController } from "./access/yolo-session.js";
 import { createFitWorkerPool } from "./attachments/fit-worker-pool.js";
 import { registerAuthPlugin, validateWsUpgrade } from "./auth/auth-plugin.js";
+import { isOperatorRequest } from "./auth/operator.js";
 import { registerBearerAuth } from "./auth/bearer-auth.js";
 import {
   computeBindReachability,
@@ -1641,8 +1642,22 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
       localToken,
     });
   } else {
-    // Auth disabled — still expose /auth/status so clients can detect this
-    fastify.get("/auth/status", async () => ({ authenticated: true, authEnabled: false }));
+    // Auth disabled — still expose /auth/status so clients can detect this.
+    // `operator`: the operator-only pairing routes' own rule (auth/operator.ts),
+    // so the client never calls them for a request they would refuse (e.g. one
+    // forwarded by a front door, whose login is not a dashboard session).
+    fastify.get("/auth/status", async (request) => ({
+      authenticated: true,
+      authEnabled: false,
+      operator: isOperatorRequest(
+        {
+          authVia: (request as { authVia?: unknown }).authVia,
+          ip: request.ip,
+          headers: request.headers as Record<string, unknown>,
+        },
+        localToken,
+      ),
+    }));
   }
 
   // REST tier gate (change: expand-mcp-tiered-surface, D1b). Registered AFTER

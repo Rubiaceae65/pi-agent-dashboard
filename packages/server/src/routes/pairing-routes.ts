@@ -18,8 +18,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { type HostAdmissionOptions, isHostAdmitted } from "../auth/host-admission.js";
 import type { ServerIdentity } from "../auth/identity.js";
 import { signNonce } from "../auth/identity.js";
-import { verifyLocalToken } from "../auth/local-token.js";
-import { isGenuinelyLocal } from "../auth/localhost-guard.js";
+import { isOperatorRequest } from "../auth/operator.js";
 import type { PairedDeviceRegistry, PairedDeviceView } from "../pairing/paired-devices.js";
 import type { ApproveResult, PairingManager, PendingDeviceView } from "../pairing/pairing.js";
 import { SUPPORTED_PAIRING_VERSIONS } from "../pairing/pairing.js";
@@ -93,12 +92,11 @@ export function createOperatorGuard(deps: {
   hostAdmission: () => HostAdmissionOptions;
 }) {
   return async function operatorGuard(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const via = (request as any).authVia;
-    const headers = request.headers as Record<string, unknown>;
-    const isOperator =
-      via === "session" ||
-      (deps.localToken !== undefined && verifyLocalToken(headers, deps.localToken)) ||
-      isGenuinelyLocal(request.ip, headers);
+    // The SAME rule `GET /auth/status` reports as `operator` (auth/operator.ts).
+    const isOperator = isOperatorRequest(
+      { authVia: (request as any).authVia, ip: request.ip, headers: request.headers as Record<string, unknown> },
+      deps.localToken,
+    );
     if (!isOperator) {
       reply.code(401).send({ success: false, error: "operator credential required" });
       return;

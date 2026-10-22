@@ -49,6 +49,7 @@ function setup(opts: { list?: () => Promise<PendingPairing[]>; bearer?: string |
     grantStore,
     api,
     getBearer: () => opts.bearer ?? null,
+    checkOperator: async () => true,
   };
   const view = render(<PairingApprovalHost {...props} ws={null} />);
   return {
@@ -157,6 +158,69 @@ describe("PairingApprovalHost", () => {
     await h.hint();
     expect(h.api.listPending).not.toHaveBeenCalled();
     expect(screen.queryByTestId("pairing-dialog")).toBeNull();
+  });
+
+  // rc-suites RC 0011 recheck: an owner behind the front door is not an
+  // operator, and every page load used to GET /api/pair/pending → 401 (console
+  // error in every engine). The default wiring asks GET /auth/status once and
+  // fetches the operator list only on `operator: true`.
+  describe("operator gate (real fetch wiring)", () => {
+    function stubFetch(status: Record<string, unknown>) {
+      const calls: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const u = String(input);
+          calls.push(u);
+          const body = u.endsWith("/auth/status") ? status : { success: true, data: [entry("aaa")] };
+          return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+        }),
+      );
+      return calls;
+    }
+    function mount() {
+      const handlers = new Set<Handler>();
+      render(
+        <PairingApprovalHost
+          onMessage={(h) => {
+            handlers.add(h);
+            return () => handlers.delete(h);
+          }}
+          ws={null}
+          store={new PairingApprovalStore()}
+          grantStore={new GrantPromptStore()}
+          getBearer={() => null}
+        />,
+      );
+      return { hint: () => act(() => handlers.forEach((h) => h(HINT))) };
+    }
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("operator=false (front-door owner): no GET /api/pair/pending, on mount or on a hint", async () => {
+      const calls = stubFetch({ authenticated: true, authEnabled: false, operator: false });
+      const m = mount();
+      await waitFor(() => expect(calls.some((u) => u.endsWith("/auth/status"))).toBe(true));
+      await m.hint();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(calls.filter((u) => u.includes("/api/pair/pending"))).toEqual([]);
+      expect(calls.filter((u) => u.endsWith("/auth/status"))).toHaveLength(1);
+      expect(screen.queryByTestId("pairing-dialog")).toBeNull();
+    });
+
+    it("operator absent (older server): treated as not an operator", async () => {
+      const calls = stubFetch({ authenticated: true, authEnabled: false });
+      mount();
+      await waitFor(() => expect(calls.some((u) => u.endsWith("/auth/status"))).toBe(true));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(calls.filter((u) => u.includes("/api/pair/pending"))).toEqual([]);
+    });
+
+    it("operator=true: the list is still fetched and the dialog shows", async () => {
+      const calls = stubFetch({ authenticated: true, operator: true });
+      mount();
+      await screen.findByTestId("pairing-dialog");
+      expect(calls.filter((u) => u.includes("/api/pair/pending")).length).toBeGreaterThanOrEqual(1);
+    });
   });
 
   it.each([

@@ -28,6 +28,7 @@ import {
 import { isBypassed } from "./bypass-urls.js";
 import { verifyLocalToken } from "./local-token.js";
 import { isGenuinelyLocal, isTrustedSource } from "./localhost-guard.js";
+import { isOperatorRequest } from "./operator.js";
 import type { CoreWsRouteScope } from "./ws-ticket.js";
 
 // Re-exported so the existing `auth-plugin.js` import surface is unchanged; the
@@ -86,7 +87,7 @@ function renderLoginPage(providers: ResolvedProvider[], error?: string): string 
     : "";
 
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PI Dashboard — Sign In</title>
 <style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f172a;color:#e2e8f0;}
 .card{background:#1e293b;padding:40px;border-radius:12px;max-width:400px;width:100%;text-align:center;}
@@ -100,7 +101,7 @@ h1{margin:0 0 24px;font-size:24px;}</style>
 function renderDeniedPage(email: string): string {
   const safeEmail = escapeHtml(email);
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PI Dashboard — Access Denied</title>
 <style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f172a;color:#e2e8f0;}
 .card{background:#1e293b;padding:40px;border-radius:12px;max-width:400px;width:100%;text-align:center;}
@@ -120,6 +121,10 @@ function logResolvedRedirectBase(port: number, override?: string): void {
   const { base, source } = resolveRedirectBase(port, override);
   console.log(`🔐 OAuth redirect base: ${base} (source: ${source})`);
 }
+
+/** An operator-only route (`operatorGuard`); `/auth/status` asks the hook's
+ *  admission question for this URL when deciding whether a cookie is a session. */
+const OPERATOR_ROUTE_PROBE = "/api/pair/pending";
 
 export async function registerAuthPlugin(
   fastify: FastifyInstance,
@@ -271,17 +276,68 @@ export async function registerAuthPlugin(
     return reply.redirect("/auth/login");
   });
 
-  // GET /auth/status — no auth required
-  fastify.get("/auth/status", async (request, reply) => {
+  // GET /auth/status — no auth required.
+  // `operator` answers "would the operator-only pairing routes admit THIS
+  // request" with the guard's own rule (auth/operator.ts). The `authVia` it is
+  // fed is what the onRequest hook below would set for such a route: a valid
+  // cookie counts as a session ONLY when the hook would have reached the
+  // cookie check (`admittedWithoutSession` is the hook's own early-return
+  // list), so status and guard cannot disagree.
+  fastify.get("/auth/status", async (request, _reply) => {
     const cookieToken = (request.cookies as any)?.[COOKIE_NAME];
-    if (cookieToken) {
-      const payload = verifyToken(cookieToken, authState.secret);
-      if (payload) {
-        return { authenticated: true, user: { name: payload.name, email: payload.sub, provider: payload.provider } };
-      }
+    const payload = cookieToken ? verifyToken(cookieToken, authState.secret) : null;
+    const admission = request as { authVia?: unknown; isAuthenticated?: boolean };
+    let authVia = admission.authVia;
+    if (!admission.isAuthenticated && payload && !admittedWithoutSession(request, OPERATOR_ROUTE_PROBE)) {
+      authVia = "session";
     }
-    return { authenticated: false };
+    const operator = isOperatorRequest(
+      { authVia, ip: request.ip, headers: request.headers as Record<string, unknown> },
+      localToken,
+    );
+    if (payload) {
+      return {
+        authenticated: true,
+        operator,
+        user: { name: payload.name, email: payload.sub, provider: payload.provider },
+      };
+    }
+    return { authenticated: false, operator };
   });
+
+  /**
+   * The onRequest hook's early returns that admit a request WITHOUT looking at
+   * the session cookie (so `authVia` stays unset). Shared with `/auth/status`.
+   */
+  function admittedWithoutSession(request: FastifyRequest, url: string): boolean {
+    const headers = request.headers as Record<string, unknown>;
+    // Genuine same-host bypass: loopback AND no proxy-forwarding header, or a
+    // valid local-IPC token. A tunnel arriving as 127.0.0.1 (with a forwarding
+    // header) is NOT exempted (D10, narrowed).
+    if (isGenuinelyLocal(request.ip, headers)) return true;
+    if (localToken && verifyLocalToken(headers, localToken)) return true;
+
+    // Skip auth routes
+    if (url.startsWith("/auth/")) return true;
+
+    // Skip PUBLIC device-facing pairing routes (a pairing device has no
+    // credential yet; these are gated by the one-time code + approval).
+    if (PUBLIC_PAIRING_PREFIXES.some((p) => url.startsWith(p))) return true;
+
+    // Skip health endpoint
+    if (url === "/api/health") return true;
+
+    // Skip /v1/* — proxy auth gate handles those
+    if (url.startsWith("/v1/")) return true;
+
+    // Skip configured bypass URL prefixes
+    if (isBypassed(url, authState.bypassUrls)) return true;
+
+    // Skip configured bypass hosts (trusted source IPs). A relayed-loopback peer
+    // (tunnel agent) is never a trusted source. See change:
+    // fix-trusted-network-tunnel-bypass (D1).
+    return isTrustedSource(request.ip, headers, authState.bypassHosts);
+  }
 
   // ─── onRequest Hook ─────────────────────────────────────────────────────
 
@@ -290,32 +346,9 @@ export async function registerAuthPlugin(
     // hook registered before this plugin). One OR branch — D7.
     if ((request as any).isAuthenticated) return;
 
-    // Genuine same-host bypass: loopback AND no proxy-forwarding header, or a
-    // valid local-IPC token. A tunnel arriving as 127.0.0.1 (with a forwarding
-    // header) is NOT exempted (D10, narrowed).
-    if (isGenuinelyLocal(request.ip, request.headers as Record<string, unknown>)) return;
-    if (localToken && verifyLocalToken(request.headers as Record<string, unknown>, localToken)) return;
-
-    // Skip auth routes
-    if (request.url.startsWith("/auth/")) return;
-
-    // Skip PUBLIC device-facing pairing routes (a pairing device has no
-    // credential yet; these are gated by the one-time code + approval).
-    if (PUBLIC_PAIRING_PREFIXES.some((p) => request.url.startsWith(p))) return;
-
-    // Skip health endpoint
-    if (request.url === "/api/health") return;
-
-    // Skip /v1/* — proxy auth gate handles those
-    if (request.url.startsWith("/v1/")) return;
-
-    // Skip configured bypass URL prefixes
-    if (isBypassed(request.url, authState.bypassUrls)) return;
-
-    // Skip configured bypass hosts (trusted source IPs). A relayed-loopback peer
-    // (tunnel agent) is never a trusted source. See change:
-    // fix-trusted-network-tunnel-bypass (D1).
-    if (isTrustedSource(request.ip, request.headers as Record<string, unknown>, authState.bypassHosts)) return;
+    // Local / local-token / public-route / bypass / trusted-source admission
+    // (the list `/auth/status` re-uses for its `operator` flag).
+    if (admittedWithoutSession(request, request.url)) return;
 
     // Validate JWT cookie
     const cookieToken = (request.cookies as any)?.[COOKIE_NAME];

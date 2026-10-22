@@ -5,7 +5,9 @@
  * - The server broadcasts a content-free `pair_pending_changed` hint; this host
  *   refetches the operator-guarded `GET /api/pair/pending` on every hint and on
  *   every (re)connect. A browser holding a paired-device bearer skips the fetch
- *   entirely (it would only get a 401/403) and never renders a dialog.
+ *   entirely (it would only get a 401/403) and never renders a dialog; so does
+ *   one the server says is not an operator (`GET /auth/status` → `operator`,
+ *   asked once per mount) — e.g. an owner behind a front door.
  * - One dialog at a time, oldest first, the rest counted ("+N more waiting").
  * - Closing without answering adds the request to the per-tab dismissed set;
  *   Settings ▸ Gateway "Review" reopens it.
@@ -36,6 +38,8 @@ export interface PairingApprovalHostProps {
   grantStore?: GrantPromptStore;
   api?: Pick<typeof pairingApi, "listPending" | "approvePending" | "denyPending">;
   getBearer?: () => string | null;
+  /** Server's operator verdict for this browser (`/auth/status`); default fetches it. */
+  checkOperator?: () => Promise<boolean>;
 }
 
 export function PairingApprovalHost({
@@ -45,6 +49,7 @@ export function PairingApprovalHost({
   grantStore = grantPromptStore,
   api = pairingApi,
   getBearer = getDeviceBearer,
+  checkOperator = pairingApi.fetchIsOperator,
 }: PairingApprovalHostProps) {
   const { pending, dismissed, preferred } = useSyncExternalStore(store.subscribe, store.getState);
   const grantOpen = useSyncExternalStore(grantStore.subscribe, grantStore.getQueue).length > 0;
@@ -58,8 +63,12 @@ export function PairingApprovalHost({
   /** Monotonic fetch id: only the newest request may write the list, so an older
    *  response resolving late can never erase a newer pending device. */
   const fetchSeq = useRef(0);
+  /** Asked once per mount: operator status does not change without a reload. */
+  const operator = useRef<Promise<boolean> | null>(null);
   const refresh = useCallback(async () => {
     if (getBearer()) return;
+    operator.current ??= checkOperator();
+    if (!(await operator.current)) return;
     const seq = ++fetchSeq.current;
     try {
       const list = await api.listPending();
@@ -67,7 +76,7 @@ export function PairingApprovalHost({
     } catch {
       // Network error / 401 / 500: show nothing; the next hint or reconnect retries.
     }
-  }, [api, store, getBearer]);
+  }, [api, store, getBearer, checkOperator]);
 
   useEffect(
     () =>
