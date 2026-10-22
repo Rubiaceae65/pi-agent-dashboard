@@ -2204,9 +2204,11 @@ export function SessionList({ sessions, selectedId, onSelect, revealRequest, onS
             }
             // Orphans (parent filtered out, or in a parent cycle) stay in the
             // partition so they render flat rather than disappearing.
-            const topLevelRows = [...subagentPlan.topLevel, ...subagentPlan.orphans].filter(
-              (s) => live.has(s.id),
-            );
+            // NOT filtered by `live`: this is the input to the active/ended
+            // split below. Filtering it to live rows emptied the ended tier
+            // for every folder, so an ended card could never be revealed
+            // (seek-to-card, ended tag-filter matches).
+            const topLevelRows = [...subagentPlan.topLevel, ...subagentPlan.orphans];
             // Flat-merge mode: when session-search is active AND no
             // folder filter is typed, don't apply the active-first sort —
             // ended results stay inline with active so the user sees
