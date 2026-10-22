@@ -220,7 +220,7 @@ describe("the graph it produces", () => {
 
   it("takes the context %, the model and the live flag from <sid>.meta.json", async () => {
     const dir = fixtureDir();
-    const p = writeSession(dir, LEAD_A, [
+    writeSession(dir, LEAD_A, [
       header(LEAD_A),
       JSON.stringify({ type: "session_info", name: "alpha", timestamp: "2026-09-30T10:00:00.000Z" }),
     ]);
@@ -236,7 +236,6 @@ describe("the graph it produces", () => {
     // live:false while the daemon still calls it streaming is a stalled worker,
     // and the graph must not keep drawing it as working
     expect(node.state).toBe("stalled");
-    void p;
   });
 
   it("scrubs a credential out of the first line on the way IN, not on the way out", async () => {

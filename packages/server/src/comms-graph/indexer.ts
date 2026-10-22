@@ -290,10 +290,13 @@ export class CommsGraphIndexer {
    * seconds with the `seq` it last saw gets `{changed:false, nodes:[], edges:[]}`
    * and a few hundred bytes, not the graph again. Nothing is buffered FOR the
    * client to be missed by; the client simply asks whether anything moved.
+   *
+   * `windowMs` is accepted (the route forwards `?window=`) but NOT applied
+   * here: the time window is a view filter, and the page applies it in
+   * `selectGraph()` so switching windows never costs a round trip.
    */
   snapshot(options: { since?: number; windowMs?: number } = {}): CommsGraphSnapshot {
     const now = this.opts.now();
-    void options.windowMs;
     const changed = options.since === undefined ? true : options.since !== this.seq;
     if (!changed) {
       return {

@@ -83,8 +83,6 @@ beforeAll(() => {
   age(join(grandDir, `${GRANDCHILD}.jsonl`), now, 60_000);
 
   // The lead's own row, so there is a parent to hang the children off.
-  const manager = createMemorySessionManager();
-  void manager;
   writeFileSync(
     join(agentDir, "sessions", `${LEAD}.jsonl`),
     `${JSON.stringify({ type: "session", version: 3, id: LEAD, timestamp: new Date(now - 120_000).toISOString(), cwd: "/repo/wire" })}\n`,
