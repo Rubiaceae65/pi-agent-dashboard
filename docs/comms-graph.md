@@ -33,7 +33,7 @@ reached` — the day's 429 storm, drawn as what it was.
 | messages | `custom_message` with `customType: "agent_message"` -> `details.from` / `details.target` | The rules are reused from `/projects/agent-collab-20260930/artifacts/index2.py`, not rewritten. |
 | node state | `agent_status.status.taskState` | |
 | context %, model, liveness | `<sid>.meta.json` | The only place the daemon writes `contextTokens` / `contextWindow` / `live`. |
-| goal status | `custom` with `customType: "thread_goal_state"` | |
+| goal (and any plugin thread) status | `custom` with `customType: "thread_<topic>_state"` (goal: `thread_goal_state`), `data.status` | Kept generically as `node.threadStates[topic]` (max 4 topics), so core names no product (core-goal-free E27); the page draws "goal active". |
 | relay | `custom` with `customType: "atelier-prime-relay"`, `fired: true` | The only durable trace a relay leaves besides its successor's name. |
 
 **The relay edge is a corroborated guess, and the code says so.** Nothing links a

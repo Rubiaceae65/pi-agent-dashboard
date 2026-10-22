@@ -314,7 +314,7 @@ describe("the graph it produces", () => {
       name: "alpha",
       model: "local-qwen/qwen3.8-27b",
       state: "error",
-      goalStatus: "active",
+      threadStates: { goal: "active" },
     });
   });
 });

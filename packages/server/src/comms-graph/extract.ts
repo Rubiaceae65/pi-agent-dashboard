@@ -13,13 +13,21 @@
  * WHAT IS NEW HERE, and why it is not in agent-collab's report:
  *   - `agent_status.taskState`, which is where "working / idle / error" comes
  *     from (agent-collab counted turns, not state).
- *   - `custom/thread_goal_state`, the goal status per node.
+ *   - `custom/thread_<topic>_state` (e.g. the goal plugin's
+ *     `thread_goal_state`), surfaced GENERICALLY as a `{topic, status}` pair:
+ *     core stays product-free (core-goal-free E27) and the page decides how to
+ *     label a topic.
  *   - `custom/atelier-prime-relay`, which is the only durable trace a relay
  *     leaves in a session file besides the successor's name.
  *
  * Everything here is pure: no fs, no clock, no daemon. `indexer.ts` owns all
  * three. That split is what makes the tests above meaningful.
  */
+
+/** `thread_<topic>_state` custom entries; the topic is a short identifier. */
+const THREAD_STATE = /^thread_([a-z0-9]{1,32}(?:_[a-z0-9]{1,32})?)_state$/;
+/** A status is a word ("active", "paused"); a longer value is clipped, not trusted. */
+const MAX_STATUS_CHARS = 40;
 
 /** What an endpoint is, as far as the FILE can prove. */
 export type EndpointKind = "lead" | "subagent" | "external";
@@ -47,7 +55,7 @@ export type LineFact =
   | { kind: "model"; model: string }
   | { kind: "session_state"; state: string }
   | { kind: "agent_status"; taskState: string; summary: string | null }
-  | { kind: "goal"; status: string; objective: string | null; tokensUsed: number }
+  | { kind: "thread_state"; topic: string; status: string }
   | { kind: "relay_fired"; at: string | null }
   | {
       kind: "message";
@@ -171,15 +179,14 @@ export function extractLine(line: string, fileSessionId: string, fileDepth = 0):
   }
   if (type === "custom") {
     const data = (d.data ?? {}) as Record<string, unknown>;
-    if (d.customType === "thread_goal_state") {
-      const status = typeof data.status === "string" ? data.status : null;
+    // Any plugin's per-thread state entry, `thread_<topic>_state`, with a
+    // string `data.status`. Only the topic and the status are kept: the rest
+    // of `data` is the plugin's business, and the graph shows a badge.
+    const topic = typeof d.customType === "string" ? THREAD_STATE.exec(d.customType)?.[1] : undefined;
+    if (topic) {
+      const status = typeof data.status === "string" ? data.status.slice(0, MAX_STATUS_CHARS) : null;
       if (!status) return null;
-      return {
-        kind: "goal",
-        status,
-        objective: typeof data.objective === "string" ? data.objective : null,
-        tokensUsed: typeof data.tokensUsed === "number" ? data.tokensUsed : 0,
-      };
+      return { kind: "thread_state", topic, status };
     }
     if (d.customType === "atelier-prime-relay") {
       return { kind: "relay_fired", at: typeof data.at === "string" ? data.at : ts };

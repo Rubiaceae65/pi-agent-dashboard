@@ -59,17 +59,19 @@ describe("extractLine — the record kinds the graph is made of", () => {
     expect(fact).toMatchObject({ kind: "agent_status", taskState: "error" });
   });
 
-  it("reads the thread goal (custom/thread_goal_state, not custom_message)", () => {
+  it("reads the thread goal (custom/thread_goal_state, not custom_message) as a generic thread state", () => {
     const fact = extractLine(
       '{"type":"custom","customType":"thread_goal_state","data":{"active":true,"status":"active","goalId":"72a1ef8c","objective":"Probe of the daemon: spawn ONE rlm child.","tokensUsed":0},"timestamp":"2026-09-29T11:21:52.300Z"}',
       OWNER,
     );
-    expect(fact).toEqual({
-      kind: "goal",
-      status: "active",
-      objective: "Probe of the daemon: spawn ONE rlm child.",
-      tokensUsed: 0,
-    });
+    // Only topic + status cross into core; the plugin's objective/goalId/tokens do not.
+    expect(fact).toEqual({ kind: "thread_state", topic: "goal", status: "active" });
+  });
+
+  it("ignores a thread state with no string status, and a customType that is not thread_<topic>_state", () => {
+    expect(extractLine('{"type":"custom","customType":"thread_goal_state","data":{"status":7}}', OWNER)).toBeNull();
+    expect(extractLine('{"type":"custom","customType":"thread__state","data":{"status":"x"}}', OWNER)).toBeNull();
+    expect(extractLine('{"type":"custom","customType":"my_goal_state","data":{"status":"x"}}', OWNER)).toBeNull();
   });
 
   it("reads the relay-fired notice, which is how a relay edge is corroborated", () => {

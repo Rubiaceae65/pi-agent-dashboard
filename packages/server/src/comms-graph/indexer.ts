@@ -54,7 +54,11 @@ export interface GraphNode {
   depth: number;
   model: string | null;
   state: string | null;
-  goalStatus: string | null;
+  /**
+   * Latest status per `thread_<topic>_state` topic recorded in the node's own
+   * file (e.g. `{ goal: "active" }`). Bounded by {@link MAX_THREAD_TOPICS}.
+   */
+  threadStates: Record<string, string>;
   contextPct: number | null;
   cwd: string | null;
   startedAt: string | null;
@@ -118,6 +122,9 @@ export interface IndexerStats {
   lastScanMs: number;
   lastScanAt: string | null;
 }
+
+/** Distinct `thread_<topic>_state` topics remembered per node. */
+const MAX_THREAD_TOPICS = 4;
 
 const DEFAULTS = {
   maxNodes: 2000,
@@ -619,9 +626,14 @@ export class CommsGraphIndexer {
       this.touch(node);
       return;
     }
-    if (fact.kind === "goal") {
+    if (fact.kind === "thread_state") {
       const node = this.nodeFor(this.keyOf(cur), file);
-      node.goalStatus = fact.status;
+      // A topic already present is updated in place; a NEW topic is admitted
+      // only while the node is under the cap, so one noisy file cannot grow a
+      // node without bound.
+      if (Object.hasOwn(node.threadStates, fact.topic) || Object.keys(node.threadStates).length < MAX_THREAD_TOPICS) {
+        node.threadStates[fact.topic] = fact.status;
+      }
       this.touch(node);
       return;
     }
@@ -715,7 +727,7 @@ export class CommsGraphIndexer {
       depth: 0,
       model: null,
       state: null,
-      goalStatus: null,
+      threadStates: {},
       contextPct: null,
       cwd: null,
       startedAt: null,
