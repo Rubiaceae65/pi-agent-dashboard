@@ -25,12 +25,13 @@ import {
   selectGraph,
   stateOf,
   WINDOWS,
+  type ModelNode,
 } from "../../../../../public/graph/src/model.js";
 
 const NOW = Date.parse("2026-09-30T15:00:00.000Z");
-const ago = (mins) => new Date(NOW - mins * 60_000).toISOString();
+const ago = (mins: number) => new Date(NOW - mins * 60_000).toISOString();
 
-function node(key, over = {}) {
+function node(key: string, over: Partial<ModelNode> = {}): ModelNode {
   return {
     key,
     name: key,

@@ -49,7 +49,7 @@ function renderList(sessions: DashboardSession[], props: Record<string, unknown>
   return render(
     <ThemeProvider>
       <div>
-        <SessionList sessions={sessions} {...props} />
+        <SessionList sessions={sessions} onSelect={() => {}} {...props} />
       </div>
     </ThemeProvider>,
   );

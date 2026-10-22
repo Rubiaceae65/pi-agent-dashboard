@@ -46,18 +46,18 @@ describe("ACCEPTANCE: /mobile/ nests children under their lead", () => {
       child(GC, A, { name: "acc-gc", rlmDepth: 2 }),
       { id: LEAD, name: "verify-fixture-lead", cwd: "/p", status: "active" },
     ];
-    const rows = m.flattenWithChildren(input);
+    const rows: Array<{ session: any; depth: number }> = m.flattenWithChildren(input);
     expect(new Set(rows.map((r) => r.session.id))).toEqual(new Set(input.map((s) => s.id)));
   });
 
   it("EDGE: a child whose lead is absent from this poll is drawn, not dropped", () => {
-    const rows = m.flattenWithChildren([child(A, LEAD, { name: "acc-orphan" })]);
+    const rows: Array<{ session: any; depth: number }> = m.flattenWithChildren([child(A, LEAD, { name: "acc-orphan" })]);
     expect(rows.map((r) => r.session.id)).toContain(A);
   });
 
   it("EDGE: a SELF-parented row is drawn and does not hang the phone", () => {
     const t0 = Date.now();
-    const rows = m.flattenWithChildren([
+    const rows: Array<{ session: any; depth: number }> = m.flattenWithChildren([
       child(A, A, { name: "acc-selfparent" }),
       { id: LEAD, name: "lead", cwd: "/p", status: "active" },
     ]);
@@ -67,7 +67,7 @@ describe("ACCEPTANCE: /mobile/ nests children under their lead", () => {
 
   it("EDGE: a two-row cycle is drawn and does not hang the phone", () => {
     const t0 = Date.now();
-    const rows = m.flattenWithChildren([
+    const rows: Array<{ session: any; depth: number }> = m.flattenWithChildren([
       child(A, B, { name: "acc-a" }), child(B, A, { name: "acc-b" }),
       { id: LEAD, name: "lead", cwd: "/p", status: "active" },
     ]);
@@ -78,20 +78,20 @@ describe("ACCEPTANCE: /mobile/ nests children under their lead", () => {
   it("EDGE: a child with no name still renders a row that can be opened", () => {
     // no `name` and no `title`: the id must be the fallback, or the row is blank
     const bare = { id: A, cwd: "/p", status: "active", parentSessionId: LEAD };
-    const rows = m.flattenWithChildren([bare, { id: LEAD, name: "lead", cwd: "/p", status: "active" }]);
+    const rows: Array<{ session: any; depth: number }> = m.flattenWithChildren([bare, { id: LEAD, name: "lead", cwd: "/p", status: "active" }]);
     const r = rows.find((x: any) => x.session.id === A);
     expect(r, "the nameless child is in the list").toBeTruthy();
-    expect(r.depth).toBe(1);
+    expect(r?.depth).toBe(1);
   });
 
   it("EDGE: a child marked with parentSessionId='' is NOT treated as a child", () => {
     // empty string is falsy-ish data; treating it as a parent link would file
     // the row under a parent named ""
-    const rows = m.flattenWithChildren([
+    const rows: Array<{ session: any; depth: number }> = m.flattenWithChildren([
       { id: A, name: "acc-empty-parent", cwd: "/p", status: "active", parentSessionId: "" },
       { id: LEAD, name: "lead", cwd: "/p", status: "active" },
     ]);
     const r = rows.find((x: any) => x.session.id === A);
-    expect(r.depth, "an empty parentSessionId is not a parent link").toBe(0);
+    expect(r?.depth, "an empty parentSessionId is not a parent link").toBe(0);
   });
 });

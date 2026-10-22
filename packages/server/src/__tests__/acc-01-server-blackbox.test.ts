@@ -10,12 +10,24 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer } from "../server.js";
+import { createServer, type DashboardServer } from "../server.js";
 import { LEAD, CHILD_A, CHILD_B, GRANDCHILD, buildTree, makeChild } from "./fixture.mjs";
 
-let home, agentDir, base, server, wsUrl;
+/** The fields of a session row these checks read (REST and WS share the shape). */
+interface Row {
+  id: string;
+  parentSessionId?: string;
+  rlmDepth?: number;
+  name?: string;
+  model?: string;
+  status?: string;
+  lastActivityAt?: number;
+  childCount?: number;
+}
 
-async function boot(extra = {}) {
+let home: string, agentDir: string, base: string, server: DashboardServer | undefined, wsUrl: string;
+
+async function boot(extra: Parameters<typeof buildTree>[1] = {}) {
   home = mkdtempSync(join(tmpdir(), "acc-subagents-"));
   const t = buildTree(home, extra);
   agentDir = t.agentDir;
@@ -32,7 +44,7 @@ async function boot(extra = {}) {
 async function shutdown() { try { await server?.stop?.(); } catch {} try { rmSync(home, { recursive: true, force: true }); } catch {} }
 
 /** Read the FIRST `sessions_snapshot` frame off a real websocket. */
-function firstSnapshot(timeoutMs = 8000) {
+function firstSnapshot(timeoutMs = 8000): Promise<{ sessions: Row[] }> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(wsUrl);
     const t = setTimeout(() => { try { ws.close(); } catch {} reject(new Error("no sessions_snapshot within " + timeoutMs + "ms")); }, timeoutMs);
@@ -40,7 +52,7 @@ function firstSnapshot(timeoutMs = 8000) {
       let msg; try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg?.type === "sessions_snapshot") { clearTimeout(t); ws.close(); resolve(msg); }
     };
-    ws.onerror = (e) => { clearTimeout(t); reject(new Error("ws error: " + (e?.message ?? e))); };
+    ws.onerror = (e) => { clearTimeout(t); reject(new Error("ws error: " + ((e as ErrorEvent)?.message ?? e))); };
   });
 }
 
@@ -53,51 +65,51 @@ describe("ACCEPTANCE: rlm children reach the dashboard", () => {
     expect(r.status).toBe(200);
     const body = await r.json();
     const list = Array.isArray(body) ? body : body.data;
-    const byId = new Map(list.map((x) => [x.id, x]));
+    const byId = new Map<string, Row>(list.map((x: Row) => [x.id, x]));
 
     expect(byId.has(LEAD), "the lead itself is a row").toBe(true);
     for (const [id, parent, depth, name] of [
       [CHILD_A, LEAD, 1, "acceptance-child-a"],
       [CHILD_B, LEAD, 1, "acceptance-child-b"],
       [GRANDCHILD, CHILD_A, 2, "acceptance-grandchild"],
-    ]) {
+    ] as Array<[id: string, parent: string, depth: number, name: string]>) {
       const row = byId.get(id);
       expect(row, `child ${name} is in /api/sessions`).toBeTruthy();
-      expect(row.parentSessionId, `${name} points at its parent`).toBe(parent);
-      expect(row.rlmDepth, `${name} reports its depth`).toBe(depth);
-      expect(row.name, `${name} carries its name`).toBe(name);
+      expect(row?.parentSessionId, `${name} points at its parent`).toBe(parent);
+      expect(row?.rlmDepth, `${name} reports its depth`).toBe(depth);
+      expect(row?.name, `${name} carries its name`).toBe(name);
       // B6: name, model, state, last activity
-      expect(row.model, `${name} carries a model`).toBeTruthy();
-      expect(["active", "ended", "idle", "streaming"]).toContain(row.status);
-      expect(typeof row.lastActivityAt).toBe("number");
+      expect(row?.model, `${name} carries a model`).toBeTruthy();
+      expect(["active", "ended", "idle", "streaming"]).toContain(row?.status);
+      expect(typeof row?.lastActivityAt).toBe("number");
     }
     // B6 on the model specifically: sidecar said local-qwen/qwen3.8-27b
-    expect(byId.get(CHILD_A).model).toContain("qwen3.8-27b");
+    expect(byId.get(CHILD_A)?.model).toContain("qwen3.8-27b");
   });
 
   it("B2: the WEBSOCKET connect snapshot carries the same children", async () => {
     const snap = await firstSnapshot();
-    const byId = new Map(snap.sessions.map((x) => [x.id, x]));
+    const byId = new Map<string, Row>(snap.sessions.map((x: Row) => [x.id, x]));
     for (const id of [CHILD_A, CHILD_B, GRANDCHILD]) {
       expect(byId.has(id), `child ${id} rides in sessions_snapshot, not just REST`).toBe(true);
     }
-    expect(byId.get(GRANDCHILD).parentSessionId).toBe(CHILD_A);
+    expect(byId.get(GRANDCHILD)?.parentSessionId).toBe(CHILD_A);
   });
 
   it("B1/B2: a child's parent gets a childCount", async () => {
     const rest = await (await fetch(`${base}/api/sessions`)).json();
     const list = Array.isArray(rest) ? rest : rest.data;
-    const lead = list.find((x) => x.id === LEAD);
+    const lead = list.find((x: Row) => x.id === LEAD);
     expect(lead.childCount, "lead reports 2 DIRECT children, not 3 rows").toBe(2);
     const snap = await firstSnapshot();
-    expect(snap.sessions.find((x) => x.id === LEAD).childCount).toBe(2);
+    expect(snap.sessions.find((x: Row) => x.id === LEAD)?.childCount).toBe(2);
   });
 
   it("B7: a finished child is still listed; one past the retention window is not", async () => {
     // the fixture's children are 30 s old, so both `completed` ones are listed
     const list = await (await fetch(`${base}/api/sessions`)).json();
     const arr = Array.isArray(list) ? list : list.data;
-    expect(arr.some((x) => x.id === CHILD_B && x.status === "ended"),
+    expect(arr.some((x: Row) => x.id === CHILD_B && x.status === "ended"),
       "a just-settled child is still visible").toBe(true);
 
     // now push one child's transcript 7 h into the past (> the 6 h window)
@@ -105,7 +117,7 @@ describe("ACCEPTANCE: rlm children reach the dashboard", () => {
     utimesSync(join(agentDir, "session-artifacts", LEAD, "sub-bbbb2222", `${CHILD_B}.jsonl`), old, old);
     const after = await (await fetch(`${base}/api/sessions`)).json();
     const arr2 = Array.isArray(after) ? after : after.data;
-    expect(arr2.some((x) => x.id === CHILD_B), "a 7 h-old child is dropped").toBe(false);
+    expect(arr2.some((x: Row) => x.id === CHILD_B), "a 7 h-old child is dropped").toBe(false);
   });
 
   it("B8: a lead with no children is untouched — no phantom rows", async () => {
@@ -123,8 +135,8 @@ describe("ACCEPTANCE: rlm children reach the dashboard", () => {
       await s2.start();
       const rows = await (await fetch(`http://127.0.0.1:${s2.httpPort()}/api/sessions`)).json();
       const arr = Array.isArray(rows) ? rows : rows.data;
-      expect(arr.every((x) => x.parentSessionId === undefined), "no row claims a parent").toBe(true);
-      const leadRow = arr.find((x) => x.id === LEAD);
+      expect(arr.every((x: Row) => x.parentSessionId === undefined), "no row claims a parent").toBe(true);
+      const leadRow = arr.find((x: Row) => x.id === LEAD);
       expect(leadRow.childCount, "a childless lead has no childCount badge").toBeUndefined();
       await s2.stop?.();
     } finally {
@@ -190,9 +202,9 @@ describe("ACCEPTANCE: degradation and no-op", () => {
       const rows = await res.json();
       const arr = Array.isArray(rows) ? rows : rows.data;
       // the good children still made it — one bad dir does not poison the scan
-      expect(arr.some((x) => x.id === CHILD_A), "good children survive a corrupt sibling").toBe(true);
+      expect(arr.some((x: Row) => x.id === CHILD_A), "good children survive a corrupt sibling").toBe(true);
       // and the corrupt ones contributed no row
-      expect(arr.some((x) => String(x.id).startsWith("eeeeeee"))).toBe(false);
+      expect(arr.some((x: Row) => String(x.id).startsWith("eeeeeee"))).toBe(false);
       await s.stop?.();
     } finally {
       process.env.HOME = prevHome; process.env.PI_CODING_AGENT_DIR = prevDir;
@@ -213,7 +225,7 @@ describe("ACCEPTANCE: degradation and no-op", () => {
       await s.start();
       const rows = await (await fetch(`http://127.0.0.1:${s.httpPort()}/api/sessions`)).json();
       const arr = Array.isArray(rows) ? rows : rows.data;
-      expect(arr.some((x) => x.id === LEAD), "no invented parent row").toBe(false);
+      expect(arr.some((x: Row) => x.id === LEAD), "no invented parent row").toBe(false);
       await s.stop?.();
     } finally {
       process.env.HOME = prevHome; process.env.PI_CODING_AGENT_DIR = prevDir;

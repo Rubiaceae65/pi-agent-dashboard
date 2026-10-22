@@ -80,6 +80,10 @@ describe("incremental reads", () => {
     await ix.scan();
     const first = ix.stats();
     expect(first.bytesRead).toBeGreaterThan(0);
+    // `seq` lives on the snapshot, not on IndexerStats: reading it off stats()
+    // compared undefined with undefined and could never fail.
+    const firstSeq = ix.snapshot().seq;
+    expect(firstSeq).toBeGreaterThan(0);
 
     ix.resetCounters();
     await ix.scan();
@@ -87,7 +91,7 @@ describe("incremental reads", () => {
     // The cursor is at EOF, so the second pass stats the file and reads 0 bytes.
     expect(second.bytesRead).toBe(0);
     expect(second.linesParsed).toBe(0);
-    expect(second.seq).toBe(first.seq);
+    expect(ix.snapshot().seq).toBe(firstSeq);
   });
 
   it("parses only the bytes appended since the last tick", async () => {
