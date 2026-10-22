@@ -3,6 +3,7 @@
  * Used by both the server CLI and bridge extension.
  */
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { HostGateMode } from "./host-admission.js";
@@ -677,7 +678,10 @@ export interface DashboardConfig {
   accessGrants: AccessGrantsConfig;
   /** Networks trusted for full access without authentication (CIDR, wildcard, exact IP) */
   trustedNetworks: string[];
-  /** Merged trustedNetworks + auth.bypassHosts (deduplicated). Computed at load time. */
+  /**
+   * Merged trustedNetworks + auth.bypassHosts + validated `PI_DASHBOARD_TRUSTED_NETWORKS`
+   * env entries (deduplicated). Computed at load time; never persisted.
+   */
   resolvedTrustedNetworks: string[];
   /** CORS allowed origins for cross-origin client hosting */
   cors: CorsConfig;
@@ -1613,6 +1617,71 @@ function parseTrustedNetworks(raw: any): string[] {
   return raw.filter((entry: unknown) => typeof entry === "string" && entry.length > 0);
 }
 
+/** Env var a DEPLOYMENT uses to declare trusted socket-peer sources (e.g. an SSO gateway). */
+export const TRUSTED_NETWORKS_ENV = "PI_DASHBOARD_TRUSTED_NETWORKS";
+
+/** Shortest IPv4 prefix accepted from the env: anything broader is blanket trust. */
+const MIN_ENV_IPV4_PREFIX = 8;
+
+/**
+ * Why a single `PI_DASHBOARD_TRUSTED_NETWORKS` entry is refused, or `null` when
+ * it is accepted. Accepts ONLY an exact IPv4/IPv6 address or an IPv4 CIDR with
+ * a prefix in [8, 32]. Refuses wildcards, hostnames, `/0` and other blanket
+ * ranges, and IPv6 CIDRs (the peer matcher `matchCidr` is IPv4-only, so an
+ * IPv6 range would silently never match — list exact IPv6 addresses instead).
+ */
+function envTrustedEntryRefusal(entry: string): string | null {
+  if (entry.includes("*")) return "wildcards are not accepted";
+  const slash = entry.indexOf("/");
+  const base = slash < 0 ? entry : entry.slice(0, slash);
+  const family = net.isIP(base);
+  if (family === 0) return "not an IP address or CIDR (hostnames are not accepted)";
+  if (slash < 0) return null;
+  if (family === 6) return "IPv6 CIDR ranges are not supported; list exact IPv6 addresses";
+  const prefix = entry.slice(slash + 1);
+  if (!/^\d{1,2}$/.test(prefix) || Number(prefix) > 32) return "invalid prefix length";
+  if (Number(prefix) < MIN_ENV_IPV4_PREFIX) return `prefix shorter than /${MIN_ENV_IPV4_PREFIX} is blanket trust`;
+  return null;
+}
+
+/**
+ * Parse a `PI_DASHBOARD_TRUSTED_NETWORKS` value (comma and/or whitespace
+ * separated). Invalid entries are DROPPED and reported through `warn`, never
+ * thrown. Pure — exported for tests.
+ */
+export function parseTrustedNetworksEnv(
+  raw: string | undefined,
+  warn: (message: string) => void = console.warn,
+): string[] {
+  if (!raw) return [];
+  const accepted: string[] = [];
+  for (const entry of raw.split(/[\s,]+/)) {
+    if (!entry) continue;
+    const refusal = envTrustedEntryRefusal(entry);
+    if (refusal) {
+      warn(`[trusted-networks] ${TRUSTED_NETWORKS_ENV} entry "${entry}" ignored: ${refusal}`);
+    } else if (!accepted.includes(entry)) {
+      accepted.push(entry);
+    }
+  }
+  return accepted;
+}
+
+let envTrustedCache: { raw: string | undefined; list: string[] } | null = null;
+
+/**
+ * Validated deployment-declared trusted sources from `PI_DASHBOARD_TRUSTED_NETWORKS`.
+ * Memoized on the raw value so `loadConfig()` (re-run on every config reparse)
+ * warns about a refused entry once, not on every reload. Never persisted:
+ * merged into `resolvedTrustedNetworks` only, so the UI cannot remove it and
+ * nothing is written to `config.json`.
+ */
+export function deploymentTrustedNetworks(): string[] {
+  const raw = process.env[TRUSTED_NETWORKS_ENV];
+  if (envTrustedCache === null || envTrustedCache.raw !== raw) envTrustedCache = { raw, list: parseTrustedNetworksEnv(raw) };
+  return envTrustedCache.list;
+}
+
 const KNOWN_TUNNEL_PROVIDERS: TunnelProviderId[] = ["zrok", "ngrok", "tailscale", "zerotier"];
 const KNOWN_TUNNEL_MODES: TunnelMode[] = ["public", "private"];
 
@@ -1752,7 +1821,9 @@ export function validateTunnelForConnect(tunnel: DashboardConfig["tunnel"]): Tun
 export function loadConfig(): DashboardConfig {
   const configDir = path.join(os.homedir(), ".pi", "dashboard");
   const configFile = path.join(configDir, "config.json");
-  const defaults: DashboardConfig = { ...DEFAULTS };
+  // Deployment-declared trusted sources apply with or without a config file.
+  const envTrusted = deploymentTrustedNetworks();
+  const defaults: DashboardConfig = { ...DEFAULTS, resolvedTrustedNetworks: [...envTrusted] };
 
   try {
     if (!fs.existsSync(configFile)) return defaults;
@@ -1867,10 +1938,12 @@ export function loadConfig(): DashboardConfig {
     };
 
     // Compute resolvedTrustedNetworks: merge trustedNetworks + auth.bypassHosts
+    // + the deployment's PI_DASHBOARD_TRUSTED_NETWORKS (env-only, never persisted).
     const merged = new Set(result.trustedNetworks);
     if (result.auth?.bypassHosts) {
       for (const h of result.auth.bypassHosts) merged.add(h);
     }
+    for (const h of envTrusted) merged.add(h);
     result.resolvedTrustedNetworks = Array.from(merged);
     return result;
   } catch {

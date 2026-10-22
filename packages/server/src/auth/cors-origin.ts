@@ -10,6 +10,7 @@
  * See change: fix-remote-connect-cors-gates.
  */
 
+import { deploymentTrustedNetworks } from "@blackbelt-technology/pi-dashboard-shared/config.js";
 import { isHostAdmitted } from "./host-admission.js";
 import { isBypassedHost } from "./localhost-guard.js";
 import type { WsRouteScope } from "./ws-ticket.js";
@@ -92,6 +93,17 @@ export interface CorsAllowance {
 }
 
 /**
+ * The trusted list minus `PI_DASHBOARD_TRUSTED_NETWORKS` entries. Those name
+ * trusted SOCKET PEERS (e.g. an SSO proxy's upstream address), not browser
+ * origins, so they reach the network guards but never make an Origin trusted.
+ * See change: add-trusted-networks-env.
+ */
+function withoutDeploymentPeers(trustedNetworks: string[]): string[] {
+  const peers = deploymentTrustedNetworks();
+  return peers.length === 0 ? trustedNetworks : trustedNetworks.filter((e) => !peers.includes(e));
+}
+
+/**
  * Decide whether `origin` may read a cross-origin response, and WHY.
  *
  * Ordered branches (first match wins):
@@ -155,7 +167,8 @@ export function classifyCorsOrigin(
     // 8. Trusted-network origin — LAN-to-LAN switching. Same matcher the WS
     //    upgrade / network guard uses, so `trustedNetworks` governs both the
     //    auth bypass and this read allowance from a single operator decision.
-    if (opts.trustedNetworks.length > 0 && isBypassedHost(host, opts.trustedNetworks)) {
+    const originNetworks = withoutDeploymentPeers(opts.trustedNetworks);
+    if (originNetworks.length > 0 && isBypassedHost(host, originNetworks)) {
       return allow("trusted-network");
     }
   } catch {

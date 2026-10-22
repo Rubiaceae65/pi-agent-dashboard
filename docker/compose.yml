@@ -42,6 +42,11 @@ services:
       # default is loopback; the container declares its exposure here.
       # See change: configurable-bind-host.
       PI_DASHBOARD_HOST: "${PI_DASHBOARD_HOST:-0.0.0.0}"
+      # Trusted socket-peer sources declared by the deployment (e.g. an SSO
+      # reverse proxy's upstream address, `10.244.0.243/32`). Exact IPs or IPv4
+      # CIDRs /8-/32; blanket/wildcard/hostname entries are dropped. Never
+      # persisted to config.json. See change: add-trusted-networks-env.
+      PI_DASHBOARD_TRUSTED_NETWORKS: "${PI_DASHBOARD_TRUSTED_NETWORKS:-}"
       # Session spawn strategy: headless | tmux. Seeded into config.json on
       # first run only (UI edits win afterward).
       PI_SPAWN_STRATEGY: "${PI_SPAWN_STRATEGY:-tmux}"

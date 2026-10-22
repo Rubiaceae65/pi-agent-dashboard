@@ -11,6 +11,13 @@
 #   DASHBOARD_PORT    -> --port
 #   PI_GATEWAY_PORT   -> --pi-port
 #   TUNNEL_ENABLED=0  -> --no-tunnel
+#
+# Read by the server directly from the environment (no flag):
+#   PI_DASHBOARD_HOST              bind host (0.0.0.0 in the container)
+#   PI_DASHBOARD_TRUSTED_NETWORKS  deployment-declared trusted socket peers
+#                                  (exact IPs / IPv4 CIDRs, e.g. an SSO
+#                                  gateway's upstream 10.244.0.243/32);
+#                                  never persisted (add-trusted-networks-env)
 # See openspec change docker-packaging.
 # ---------------------------------------------------------------------------
 set -euo pipefail
