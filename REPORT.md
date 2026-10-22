@@ -56,8 +56,8 @@ packages/server/src/comms-graph/
   redact.ts         secret scrubbing, run before anything is retained
   route.ts          the read-only route
   measure.mjs       the memory/throughput measurement
-  transpile.mjs     esbuild pass, for a runtime with no toolchain
 public/graph/       model, seeded layout, canvas, page
+scripts/comms-graph-transpile.mjs  esbuild pass, for a runtime with no toolchain (dev tool, not shipped)
 ```
 
 Two decisions worth stating, because both were forced by the data rather than

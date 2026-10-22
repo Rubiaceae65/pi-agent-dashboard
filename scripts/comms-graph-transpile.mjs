@@ -8,7 +8,14 @@
  * is a rule one has to be right about, and this job has a real compiler
  * available for free. Use the compiler.
  *
- * Run: node transpile.mjs <srcdir> <outdir>
+ * Run: node scripts/comms-graph-transpile.mjs <srcdir> <outdir>
+ *
+ * WHERE IT LIVES. This is a developer tool, not runtime code: nothing in the
+ * server imports or spawns it. It used to sit in packages/server/src/comms-graph/,
+ * which is a SHIPPED tree, so its esbuild import was an undeclared runtime
+ * dependency of the published package (verify-published-imports, biome
+ * noUndeclaredDependencies). It now lives in the root scripts/ (never packed)
+ * and esbuild is a root devDependency, which is exactly how it is used.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -19,7 +26,7 @@ const esbuild = require("esbuild");
 
 const [src, out] = process.argv.slice(2);
 if (!src || !out) {
-  console.error("usage: transpile.mjs <srcdir> <outdir>");
+  console.error("usage: comms-graph-transpile.mjs <srcdir> <outdir>");
   process.exit(2);
 }
 fs.mkdirSync(out, { recursive: true });
