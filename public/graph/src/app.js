@@ -172,6 +172,11 @@ function badge(text, color) {
   return b;
 }
 
+/** `thread_<topic>_state` statuses, e.g. { goal: "active" } -> a "goal active" badge. */
+function threadStateBadges(n) {
+  return Object.entries(n.threadStates || {}).map(([topic, status]) => badge(`${topic.replace(/_/g, " ")} ${status}`));
+}
+
 function showNode(key) {
   const n = graph.nodes.find((x) => x.key === key);
   const panel = $("panel");
@@ -189,10 +194,7 @@ function showNode(key) {
   if (n.gone) panel.appendChild(badge("gone"));
   if (n.depth > 0) panel.appendChild(badge(`depth ${n.depth}`));
   if (n.parent) panel.appendChild(badge(`of ${n.parent}`));
-  // `thread_<topic>_state` statuses, e.g. { goal: "active" } -> "goal active".
-  for (const [topic, status] of Object.entries(n.threadStates || {})) {
-    panel.appendChild(badge(`${topic.replace(/_/g, " ")} ${status}`));
-  }
+  for (const b of threadStateBadges(n)) panel.appendChild(b);
   if (n.messagesIn) panel.appendChild(badge(`in ${n.messagesIn}`));
   if (n.messagesOut) panel.appendChild(badge(`out ${n.messagesOut}`));
   meta.textContent = [n.model, n.cwd, n.lastActivityAt ? `last ${recency(n.lastActivityAt, Date.now())} ago` : null]
