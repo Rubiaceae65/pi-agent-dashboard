@@ -29,10 +29,24 @@
 import { resolveRlmArtifactsDir } from "@blackbelt-technology/pi-dashboard-shared/dashboard-paths.js";
 import { directChildCounts, scanRlmSubagents } from "./rlm-subagent-scanner.js";
 
-/** The subset of the connect snapshot this merge touches. */
-export interface SnapshotLike {
-  sessions: Array<Record<string, unknown> & { id?: string }>;
-  [k: string]: unknown;
+/** The one field of a session row this merge reads and the one it stamps. */
+export interface SnapshotRow {
+  id?: string;
+  childCount?: number;
+}
+
+/**
+ * The subset of the connect snapshot this merge touches.
+ *
+ * Generic over the row type so the caller's real shape survives the call:
+ * `buildSnapshot()` returns `DashboardSession[]` plus `orders`/`endedTotals`,
+ * and `sessions_snapshot` requires all three. The previous index-signature
+ * shape (`Record<string, unknown>`) rejected `DashboardSession` (an interface
+ * has no index signature) and widened the result so the frame lost `orders`
+ * and `endedTotals` at the type level - two tsc errors in browser-gateway.ts.
+ */
+export interface SnapshotLike<R extends SnapshotRow = SnapshotRow> {
+  sessions: R[];
 }
 
 /**
@@ -43,21 +57,23 @@ export interface SnapshotLike {
  * A no-op (same object) when there is no artifacts tree, so a plain pi install
  * with no rlm children snapshots exactly as before.
  */
-export function withRlmChildrenInSnapshot<T extends SnapshotLike>(snapshot: T): T {
+export function withRlmChildrenInSnapshot<R extends SnapshotRow, T extends SnapshotLike<R>>(snapshot: T & SnapshotLike<R>): T {
   const artifactsDir = resolveRlmArtifactsDir();
   if (!artifactsDir) return snapshot;
 
   const { sessions: children } = scanRlmSubagents({ artifactsDir });
   if (children.length === 0) return snapshot;
 
-  const merged = new Map<string, Record<string, unknown> & { id?: string }>();
+  const merged = new Map<string, R>();
   for (const row of snapshot.sessions) {
     if (row?.id) merged.set(row.id, row);
   }
   // Present-in-snapshot wins, so a child that ever DOES get a richer live row
   // is not downgraded to the disk projection.
   for (const child of children) {
-    if (!merged.has(child.id)) merged.set(child.id, child as unknown as Record<string, unknown> & { id: string });
+    // A child is a disk projection of the same session-row shape the REST
+    // route serves; it carries `id` and is merged as a row of the caller's type.
+    if (!merged.has(child.id)) merged.set(child.id, child as unknown as R);
   }
   for (const [parentId, count] of directChildCounts(children)) {
     const parent = merged.get(parentId);
