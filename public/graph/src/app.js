@@ -70,7 +70,7 @@ $("collapse").onchange = (e) => {
 };
 $("refresh").onclick = () => {
   graph.seq = 0;
-  poll();
+  startPoll();
 };
 
 // ---------------------------------------------------------------- interaction
@@ -304,6 +304,18 @@ async function poll() {
   }
 }
 
+/**
+ * Fire a poll from a non-async caller. `poll()` already turns every failure
+ * into the status line, so this catch is the backstop for a throw that escapes
+ * it (a render bug in `repaint()`), and it reports through the same channel
+ * instead of leaving an unhandled rejection in the console.
+ */
+function startPoll() {
+  poll().catch((err) => {
+    $("status").textContent = `offline: ${err?.message ?? err}`;
+  });
+}
+
 renderer.resize();
-poll();
-setInterval(poll, POLL_MS);
+startPoll();
+setInterval(startPoll, POLL_MS);

@@ -99,6 +99,16 @@ async function loadSessions() {
   }
 }
 
+/**
+ * Fire a list refresh from a non-async caller. `loadSessions()` already turns
+ * a failed fetch into the status line; this catch is the backstop for a throw
+ * that escapes it, reported through the same channel rather than left as an
+ * unhandled rejection.
+ */
+function refreshSessions() {
+  loadSessions().catch(() => setStatus('bad', 'session list unavailable'));
+}
+
 function handle(m) {
   switch (m.type) {
     case 'sessions_snapshot':
@@ -121,7 +131,7 @@ function handle(m) {
       if (state.sid === m.sessionId) renderLog();
       break;
     case 'session_added':
-      loadSessions();
+      refreshSessions();
       break;
   }
 }
@@ -234,8 +244,8 @@ function boot() {
     ta.style.height = Math.min(ta.scrollHeight, window.innerHeight * 0.4) + 'px';
   });
   // Enter inserts a newline on a phone keyboard; the button is the only send path.
-  loadSessions();
+  refreshSessions();
   connect();
-  setInterval(loadSessions, 15000);
+  setInterval(refreshSessions, 15000);
 }
 boot();
