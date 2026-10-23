@@ -46,6 +46,7 @@ import { YOLO_ENV } from "./access/yolo-env.js";
 import { YoloController } from "./access/yolo-session.js";
 import { createFitWorkerPool } from "./attachments/fit-worker-pool.js";
 import { registerAuthPlugin, validateWsUpgrade } from "./auth/auth-plugin.js";
+import { isOperatorRequest } from "./auth/operator.js";
 import { registerBearerAuth } from "./auth/bearer-auth.js";
 import {
   computeBindReachability,
@@ -177,6 +178,7 @@ import { registerKnownServersRoutes } from "./routes/known-servers-routes.js";
 import { registerLiveServerRoutes } from "./routes/live-server-routes.js";
 import { registerManifestRoute } from "./routes/manifest-route.js";
 import { registerCommsGraphRoute } from "./comms-graph/route.js";
+import { canonicalizeSubAppUrl } from "./lib/static-subapps.js";
 import {
   GRAPH_PREFIX,
   LINKS_PREFIX,
@@ -192,6 +194,7 @@ import { registerNodeRuntimeRoutes } from "./routes/node-runtime-routes.js";
 import { registerOpenSpecGroupRoutes } from "./routes/openspec-group-routes.js";
 import { registerOpenSpecRoutes } from "./routes/openspec-routes.js";
 import { registerPackageRoutes } from "./routes/package-routes.js";
+import { registerLinksConfigRoute } from "./routes/links-config-route.js";
 import { PUBLIC_PAIRING_PREFIXES, registerPairingRoutes } from "./routes/pairing-routes.js";
 import { registerPiChangelogRoutes } from "./routes/pi-changelog-routes.js";
 import { registerPiCoreRoutes } from "./routes/pi-core-routes.js";
@@ -237,7 +240,7 @@ import { removePid, writePid } from "./spawn-process/server-pid.js";
 import { armSpawnWatchdog } from "./spawn-process/spawn-register-watchdog.js";
 import { createTerminalGateway } from "./terminal/terminal-gateway.js";
 import { createTerminalManager, deriveTranscriptCapBytes } from "./terminal/terminal-manager.js";
-import { cleanupStaleZrok, createTunnel, deleteTunnel, detectZrokBinary, ensureReservedName, getTunnelUrl, liveTunnelOrigins, scavengeOrphanZrokProcesses } from "./tunnel/tunnel.js";
+import { cleanupStaleZrok, createTunnel, deleteTunnel, detectZrokBinary, ensureReservedName, getTunnelUrl, liveTunnelOrigins, scavengeOrphanZrokProcesses, TUNNEL_UNAVAILABLE_NO_ZROK } from "./tunnel/tunnel.js";
 import { startTunnelWatchdog, stopTunnelWatchdog } from "./tunnel/tunnel-watchdog.js";
 
 export interface ServerConfig {
@@ -1374,6 +1377,9 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
     logger: false,
     keepAliveTimeout: 30_000,
     connectionTimeout: 10_000,
+    // `/mobile/api/sessions` etc. → canonical path, before routing and every
+    // gate (a door may route only `/mobile/`). See lib/static-subapps.ts.
+    rewriteUrl: (req) => canonicalizeSubAppUrl(req.url ?? "/"),
   });
 
   // Route inventory (test-only): fires as each route registers, before listen,
@@ -1641,8 +1647,22 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
       localToken,
     });
   } else {
-    // Auth disabled — still expose /auth/status so clients can detect this
-    fastify.get("/auth/status", async () => ({ authenticated: true, authEnabled: false }));
+    // Auth disabled — still expose /auth/status so clients can detect this.
+    // `operator`: the operator-only pairing routes' own rule (auth/operator.ts),
+    // so the client never calls them for a request they would refuse (e.g. one
+    // forwarded by a front door, whose login is not a dashboard session).
+    fastify.get("/auth/status", async (request) => ({
+      authenticated: true,
+      authEnabled: false,
+      operator: isOperatorRequest(
+        {
+          authVia: (request as { authVia?: unknown }).authVia,
+          ip: request.ip,
+          headers: request.headers as Record<string, unknown>,
+        },
+        localToken,
+      ),
+    }));
   }
 
   // REST tier gate (change: expand-mcp-tiered-surface, D1b). Registered AFTER
@@ -2274,6 +2294,9 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
   registerStaticSubAppRoute(fastify, LINKS_PREFIX);
   registerStaticSubAppRoute(fastify, GRAPH_PREFIX);
   registerCommsGraphRoute(fastify);
+  // `/links/links.json` — the deployment's links (PI_DASHBOARD_LINKS_FILE);
+  // the page ships no inventory of its own.
+  registerLinksConfigRoute(fastify);
 
   // Dynamic PWA manifest — MUST be registered before fastify-static so
   // explicit route matching wins over the static asset. See change:
@@ -3022,6 +3045,9 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
 
       // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: legacy server wiring, grandfathered; decompose in a dedicated refactor, not piecemeal
       fastify.server.on("upgrade", (request, socket, head) => {
+        // `/mobile/ws` → `/ws` before any gate reads the URL (same alias as
+        // the HTTP `rewriteUrl` above; lib/static-subapps.ts).
+        request.url = canonicalizeSubAppUrl(request.url ?? "/");
         // Ephemeral single-use ticket (D11) bound to the requested WS route
         // scope. The one cheap read BEFORE the first gate — the host-admission
         // log line names the scope.
@@ -3343,6 +3369,12 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
               );
             }
           }
+        } else {
+          // zrok is an opt-in image component (Dockerfile INCLUDE_ZROK=1);
+          // release images ship without it. A requested tunnel then degrades
+          // to "unavailable" (see /api/tunnel-status) — boot never fails or
+          // retries on it.
+          console.warn(`[tunnel] ${TUNNEL_UNAVAILABLE_NO_ZROK}`);
         }
       }
 

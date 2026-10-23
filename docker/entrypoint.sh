@@ -47,7 +47,11 @@ tmux start-server 2>/dev/null || true
 #     dies on `open /dev/tty: device not configured` in a non-interactive
 #     container. Enroll only when not already enrolled (idempotent across
 #     restarts on the ~/.zrok2 volume). See change: support-zrok-v2.
-if [ -n "${ZROK_TOKEN:-}" ]; then
+#     zrok is an opt-in build component (Dockerfile ARG INCLUDE_ZROK, default
+#     0): release images ship without it, so skip enrollment cleanly then.
+if ! command -v zrok2 >/dev/null 2>&1; then
+  echo "[entrypoint] zrok not installed in this image — tunnel unavailable${ZROK_TOKEN:+ (ZROK_TOKEN ignored)}"
+elif [ -n "${ZROK_TOKEN:-}" ]; then
   ZROK_ENV="${HOME}/.zrok2/environment.json"
   # Validate the SAME required fields as readZrokEnvironment() — a malformed or
   # partial environment.json must not permanently suppress enrollment.

@@ -69,7 +69,7 @@ import { heapFallbackStatus } from "../spawn-process/heap-args.js";
 import { spawnRestart } from "../spawn-process/restart-helper.js";
 import { readSpawnFailures } from "../spawn-process/spawn-failure-log.js";
 import { systemOpenCapability } from "../system-open-capability.js";
-import { connectResolvedProviders, createTunnel, deleteTunnel, disconnectResolvedProviders, ensureReservedName, getProviderReadiness, getTunnelStatus, getTunnelUrl, releaseShare, setPrimaryProvider } from "../tunnel/tunnel.js";
+import { connectResolvedProviders, createTunnel, deleteTunnel, disconnectResolvedProviders, ensureReservedName, getProviderReadiness, getTunnelStatus, getTunnelUrl, releaseShare, setPrimaryProvider, TUNNEL_UNAVAILABLE_NO_ZROK } from "../tunnel/tunnel.js";
 import { acceptTargetFor, blockEvents } from "../tunnel/tunnel-block-events.js";
 import { collectEndpoints } from "../tunnel/tunnel-endpoints.js";
 import { runEnrollStep } from "../tunnel/tunnel-enroll.js";
@@ -714,7 +714,7 @@ export function registerSystemRoutes(
     const status = getTunnelStatus();
 
     if (status.status === "active") return { ok: true, url: status.url };
-    if (status.status === "unavailable") return { ok: false, error: "zrok not installed" };
+    if (status.status === "unavailable") return { ok: false, error: TUNNEL_UNAVAILABLE_NO_ZROK };
     // v2: resolve the reserved NAME (stored or minted-when-persistent) and
     // cache it so watchdog recycles reuse the SAME name (stable URL).
     const reservedName = ensureReservedName({

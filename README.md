@@ -410,6 +410,37 @@ OAuth2 authentication guards external (tunnel) access. Localhost is always ungua
 
 > **Security note:** `/api/spawn-failures` is reachable to any caller on deployments without auth; entries contain `cwd` paths. Enable auth before exposing via tunnel.
 
+### Links page (`/links/`)
+
+The `/links/` page lists the deployment's own links; the dashboard ships none
+(release rule: own DNS only, no IPs, no plain http). The deployment points
+`PI_DASHBOARD_LINKS_FILE` at a JSON file (e.g. a mounted ConfigMap); the page
+fetches it from `/links/links.json` (same network guard as the page; re-read
+per request, so an update needs no restart). Unset → the page says links are
+not configured.
+
+```json
+{
+  "links": [
+    { "group": "Front door", "label": "Dashboard", "url": "https://dash.door.venue.example/" },
+    { "group": "Front door", "label": "Dashboard (phone)", "url": "https://ops.door.venue.example/mobile/" },
+    { "group": "Public", "label": "Shop", "url": "https://shop.venue.example/shop", "note": "optional text" }
+  ]
+}
+```
+
+| Field | Required | Rule |
+|-------|----------|------|
+| `label` | Yes | Text, ≤120 chars (rendered as text, never HTML) |
+| `url` | Yes | `https:` only, a DNS hostname (no IP literal), no `user:pass@`; anything else (`http:`, `javascript:`, `data:`, IPs) is dropped |
+| `group` | No | Heading the link is listed under |
+| `note` | No | Short text under the link |
+
+A bare array of entries is accepted too. Invalid entries are dropped (the
+response counts them in `dropped`); a missing or malformed file shows "could
+not be used". Full example for a front-door venue (replace `venue.example`
+with your zone): [`docker/links.example.json`](docker/links.example.json).
+
 ### Tunnel (zrok)
 
 The dashboard auto-connects a [zrok](https://zrok.io/) tunnel on start when `tunnel.enabled` is `true`. Install with `brew install zrok` (macOS) and run `zrok enable <token>` to enrol — the dashboard reads zrok's own config (`~/.zrok2/environment.json`), no keys are stored in the dashboard. Reserved shares provide persistent URLs across restarts.

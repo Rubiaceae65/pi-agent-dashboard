@@ -48,6 +48,39 @@ overrides:
   # Caught by the docker harness, not by any unit test.
   # See change: update-pi-core-0-85-adopt-apis.
   "@earendil-works/pi-coding-agent": 0.86.1
+  # Security floor (2026-10-23, trivy 0.76.0 on rubiaceae65/pi-dashboard:dev-3,
+  # fixable CRITICAL/HIGH). Each selector stays inside the resolved major.
+  # form-data 2.5.6 goes past the parent's declared range (request@2.88.2
+  # wants ~2.3.2). Drop an entry once the lockfile resolves the fixed version
+  # itself. nodemailer (GHSA-v53p-9fqp-m79j, fixed 10.0.6) is fixed by the
+  # mailparser 3.10.0 bump in packages/server (pins nodemailer 10.1.7), which
+  # also brings html-to-text 10.0.1 -> deepmerge-ts 8 (CVE-2026-40345).
+  # 2026-10-24, trivy on pi-dashboard:dev-6 (Node HIGH):
+  # - basic-ftp 5.3.1 -> 6.2.1 (CVE-2026-102990) is the ONE cross-major entry:
+  #   get-uri@6 (proxy-agent -> pac-proxy-agent, ftp:// PAC URLs) wants ^5.3.1
+  #   and no 5.x fix exists. 6.0.0's only break is allowSeparateTransferHost
+  #   defaulting to false; the Client API get-uri calls (access/lastMod/list/
+  #   downloadTo/close) is unchanged and the package stays CJS.
+  # - @modelcontextprotocol/client 2.0.0 -> 2.2.0 (CVE-2026-104850):
+  #   pi-mcp-adapter@2.30.0 pins client+core 2.0.0 exactly; client 2.2.0 pins
+  #   core 2.2.0, so core moves with it to keep ONE core copy.
+  "undici@6": 6.28.1
+  "undici@7": 7.29.1
+  "brace-expansion@1": 1.1.20
+  "brace-expansion@2": 2.1.6
+  "brace-expansion@5": 5.0.11
+  "@xmldom/xmldom@0.9": 0.9.12
+  "fastify@5": 5.12.2
+  "fast-uri@3": 3.1.7
+  "fast-uri@4": 4.1.4
+  "form-data@2": 2.5.6
+  "handlebars@4": 4.7.10
+  "proxy-addr@2": 2.0.8
+  "source-map-js@1": 1.2.2
+  "basic-ftp@5": 6.2.1
+  "@modelcontextprotocol/sdk@1": 1.31.0
+  "@modelcontextprotocol/client@2": 2.2.0
+  "@modelcontextprotocol/core@2": 2.2.0
 
 # pnpm 11 treats un-approved dependency build scripts as a FATAL error
 # (ERR_PNPM_IGNORED_BUILDS, non-zero exit) — which would red every CI

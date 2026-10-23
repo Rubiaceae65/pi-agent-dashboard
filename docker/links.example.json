@@ -1,0 +1,12 @@
+{
+  "links": [
+    { "group": "Front door", "label": "Dashboard", "url": "https://dash.door.venue.example/" },
+    { "group": "Front door", "label": "Dashboard (phone)", "url": "https://ops.door.venue.example/mobile/" },
+    { "group": "Front door", "label": "Home Assistant", "url": "https://ha.door.venue.example/" },
+    { "group": "Front door", "label": "Axiomat", "url": "https://axiomat.door.venue.example/" },
+    { "group": "Front door", "label": "Odoo", "url": "https://odoo.door.venue.example/odoo" },
+    { "group": "Front door", "label": "Portal", "url": "https://portal.door.venue.example/" },
+    { "group": "Front door", "label": "Speedy", "url": "https://speedy.door.venue.example/" },
+    { "group": "Public", "label": "Shop", "url": "https://shop.venue.example/shop" }
+  ]
+}

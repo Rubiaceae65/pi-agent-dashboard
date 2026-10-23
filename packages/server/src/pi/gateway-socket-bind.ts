@@ -205,19 +205,65 @@ function writeOwnerPid(socketPath: string): void {
  * Whether the pid recorded next to `socketPath` is provably gone.
  *
  * Fail-closed in every uncertain case — a missing, empty or unparseable
- * pidfile proves nothing, and only a *recorded* pid that is not alive
- * authorises reclaiming the path.
+ * pidfile proves nothing. A *recorded* pid proves death when:
+ *
+ *   - it is not alive; or
+ *   - it is OUR pid: this process has not bound the path yet (we hold the bind
+ *     lock and are deciding whether to), so the record is a previous
+ *     incarnation's. This is the container-restart case: `~/.pi` is a volume
+ *     that survives the restart and the fresh PID namespace hands the new
+ *     server the SAME pid the dead one recorded, so a plain liveness check
+ *     answered "alive" on every restart and the pod crash-looped; or
+ *   - (Linux) the process now holding that pid STARTED AFTER the pidfile was
+ *     written — it cannot be the owner, the pid was recycled (e.g. the
+ *     launcher or tmux of a restarted container).
+ *
+ * Only ever consulted on a REFUSED probe — `live` and `timeout` never reach it.
  */
 function ownerIsProvablyDead(socketPath: string): boolean {
+  const pidFile = `${socketPath}.pid`;
   let raw: string;
+  let writtenAtMs: number;
   try {
-    raw = fs.readFileSync(`${socketPath}.pid`, "utf8");
+    raw = fs.readFileSync(pidFile, "utf8");
+    writtenAtMs = fs.statSync(pidFile).mtimeMs;
   } catch {
     return false;
   }
   const pid = Number.parseInt(raw.trim(), 10);
   if (!Number.isInteger(pid) || pid <= 0) return false;
-  return !isProcessAlive(pid);
+  if (pid === process.pid) return true;
+  if (!isProcessAlive(pid)) return true;
+  const startedAtMs = processStartEpochMs(pid);
+  // 1 s slack: /proc start time has clock-tick granularity and the pidfile is
+  // written after the owner has been running for a while anyway.
+  return startedAtMs !== null && startedAtMs > writtenAtMs + 1_000;
+}
+
+/**
+ * Wall-clock start time of `pid` (Linux `/proc`), or null when unknowable
+ * (other platforms, no `/proc`, the process vanished, unparseable stat).
+ * Exported for tests.
+ */
+export function processStartEpochMs(pid: number): number | null {
+  // /proc/<pid>/stat is Linux-only; elsewhere the start time is unknowable and null is the intended fallback.
+  if (process.platform !== "linux") return null; // platform-branch-ok
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    // Field 2 (comm) may contain spaces/parens: parse after the LAST ')'.
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    const startTicks = Number(fields[19]); // field 22 overall
+    const btimeLine = fs
+      .readFileSync("/proc/stat", "utf8")
+      .split("\n")
+      .find((l) => l.startsWith("btime "));
+    const bootSec = btimeLine ? Number(btimeLine.slice(6)) : Number.NaN;
+    if (!Number.isFinite(startTicks) || !Number.isFinite(bootSec)) return null;
+    // USER_HZ is 100 on every mainstream Linux ABI.
+    return bootSec * 1000 + (startTicks / 100) * 1000;
+  } catch {
+    return null;
+  }
 }
 
 /**

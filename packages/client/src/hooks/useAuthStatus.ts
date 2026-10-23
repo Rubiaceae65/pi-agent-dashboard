@@ -4,6 +4,12 @@ import { getApiBase } from "../lib/api/api-context.js";
 export interface AuthStatus {
   authenticated: boolean;
   authEnabled?: boolean;
+  /**
+   * The server's own answer to "would the operator-only routes (pairing
+   * approval: `/api/pair/pending`, approve, deny, mint) admit this browser"
+   * — the same rule as `operatorGuard`. Absent on an older server.
+   */
+  operator?: boolean;
   user?: { name: string; email: string; provider: string };
 }
 

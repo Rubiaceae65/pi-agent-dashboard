@@ -156,7 +156,9 @@ write_state_file
 
 # Overlay mode (default) needs CAP_SYS_ADMIN for the overlay mount; copy mode
 # runs with no added capability. Layer the cap file only when NOT copy mode.
-COMPOSE_FILES=(-f "${SCRIPT_DIR}/compose.yml" -f "${SCRIPT_DIR}/compose.test.yml")
+# compose.test.target.yml builds the full `app` stage (the Dockerfile default is
+# the slim `runtime` stage). See docs/runtime-image.md.
+COMPOSE_FILES=(-f "${SCRIPT_DIR}/compose.yml" -f "${SCRIPT_DIR}/compose.test.yml" -f "${SCRIPT_DIR}/compose.test.target.yml")
 if [ "${TEST_COPY_MODE:-}" != "1" ]; then
   COMPOSE_FILES+=(-f "${SCRIPT_DIR}/compose.test.cap.yml")
   MODE_NOTE="overlay (CAP_SYS_ADMIN)"

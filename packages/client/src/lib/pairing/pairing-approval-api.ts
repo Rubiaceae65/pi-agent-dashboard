@@ -8,6 +8,8 @@
  * approval host — a shared module would drag them into the entry chunk
  * (`mdi-chunk-size` gzip cap).
  */
+
+import type { AuthStatus } from "../../hooks/useAuthStatus.js";
 import { getApiBase } from "../api/api-context.js";
 import { fetchJson, fetchJsonResponse } from "../api/fetch-json.js";
 import type { PairedDeviceView } from "./paired-devices-api.js";
@@ -29,6 +31,22 @@ export interface PendingPairing {
   createdAt: number;
   expiresAt: number;
   attemptsLeft: number;
+}
+
+/**
+ * Is this browser an operator (`GET /auth/status` → `operator`)? The server
+ * computes it with `operatorGuard`'s own rule, so a browser that is not one —
+ * e.g. an owner behind a front door, whose login is not a dashboard session —
+ * never calls the operator-only list (it would only get a 401). Anything but
+ * an explicit `true` (older server, transport error) is "no".
+ */
+export async function fetchIsOperator(): Promise<boolean> {
+  try {
+    const status = await fetchJson<AuthStatus>(`${getApiBase()}/auth/status`);
+    return status.operator === true;
+  } catch {
+    return false;
+  }
 }
 
 /** List pending devices. Throws on transport / non-2xx (caller shows nothing). */

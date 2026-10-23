@@ -1,0 +1,28 @@
+Scope: all 53 workspace projects
+Progress: resolved 0, reused 1, downloaded 0, added 0
+Progress: resolved 0, reused 1355, downloaded 0, added 1413, done
+packages/pi-forms-bpmn postinstall: added 259 packages in 2s
+Done in 39.9s using pnpm v11.15.1
+node_modules/protobufjs postinstall$ node scripts/postinstall
+node_modules/node-pty install$ node scripts/prebuild.js || node-gyp rebuild
+node_modules/koffi install$ node src/cnoke/cnoke.js -P . -D src/koffi --prebuild
+node_modules/protobufjs postinstall: Done
+node_modules/node-pty install: [32m> Checking prebuilds...[0m
+node_modules/node-pty install: Done
+node_modules/node-pty postinstall$ node scripts/post-install.js
+node_modules/node-pty postinstall: [32m> Cleaning release folder...[0m
+node_modules/node-pty postinstall: [32m> Moving conpty.dll...[0m
+node_modules/node-pty postinstall:   SKIPPED (not Windows)
+node_modules/koffi install: Done
+node_modules/node-pty postinstall: Done
+.../@ffprobe-installer/linux-x64 postinstall$ chmod u+x ffprobe
+.../@ffprobe-installer/linux-x64 postinstall: Done
+node_modules/ffmpeg-static install$ node install.js
+packages/server/node_modules/koffi install$ node ./cnoke.cjs -P . -D src/koffi --prebuild --release
+packages/server/node_modules/koffi install: Done
+node_modules/ffmpeg-static install: Done
+packages/pi-forms-bpmn postinstall$ node scripts/ensure-openforms-deps.mjs
+packages/pi-forms-bpmn postinstall: [pi-forms-bpmn] installing openforms-mui/tools dependencies (one-time)…
+packages/client prepare$ node scripts/vite-build.mjs build && node scripts/precompress.mjs
+packages/client prepare: ✓ built in 32.02s
+packages/client prepare: [precompress] 94 files gzipped: 18.06 MB → 5.00 MB (72% saved)

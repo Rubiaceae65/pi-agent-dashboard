@@ -1,0 +1,14 @@
+Scope: all 53 workspace projects
+✓ Lockfile passes supply-chain policies (verified 7h ago)
+Lockfile is up to date, resolution step is skipped
+Packages: +1414
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+dependencies:
++ @blackbelt-technology/pi-dashboard-extension 0.8.0 <- packages/extension
++ @blackbelt-technology/pi-dashboard-server 0.8.0 <- packages/server
++ @blackbelt-technology/pi-dashboard-web 0.8.0 <- packages/client
+
+devDependencies: skipped
+
+Done in 1.4s using pnpm v11.15.1

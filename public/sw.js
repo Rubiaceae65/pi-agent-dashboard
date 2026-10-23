@@ -7,7 +7,8 @@
 // See change: fix-openspec-profile-load-race.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith("/api/")) {
+  // `/mobile/api/` is the phone client's prefixed alias of the same API.
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/mobile/api/")) {
     // Pass through; do NOT mask failures as a fabricated 503.
     return; // let the browser perform the default network fetch
   }

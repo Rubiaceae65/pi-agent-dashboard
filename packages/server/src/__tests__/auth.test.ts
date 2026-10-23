@@ -301,4 +301,16 @@ describe("auth-off tunnel surface stays reachable (S9, S10, S11)", () => {
     const body = await res.json();
     expect(body).toHaveProperty("authEnabled");
   });
+
+  // rc-suites RC 0011 recheck: a forwarded (front-door) request is not an
+  // operator, so the client must not call GET /api/pair/pending; a genuine
+  // same-host request is. Same rule as operatorGuard (auth/operator.ts).
+  it("reports operator=false for a forwarded request and true for a genuine local one", async () => {
+    const fwd = await (await fetch(url("/auth/status"), { headers: TUNNELED })).json();
+    expect(fwd.operator).toBe(false);
+    const pending = await fetch(url("/api/pair/pending"), { headers: TUNNELED });
+    expect(pending.ok).toBe(false); // refused (network guard / operatorGuard)
+    const local = await (await fetch(url("/auth/status"))).json();
+    expect(local.operator).toBe(true);
+  });
 });
