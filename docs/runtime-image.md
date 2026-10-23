@@ -8,7 +8,7 @@ Why: trivy on `rubiaceae65/pi-dashboard:dev-3` (2026-10-23) — ~84% of fixable 
 
 | Stage | From | Content | Used by |
 |---|---|---|---|
-| `base` | `node:24-bookworm-slim@sha256:…` | apt tools (tmux, jq, git, curl, ripgrep, fd, poppler-utils, build-essential, python3), zrok2, gh, jj | all |
+| `base` | `node:24-bookworm-slim@sha256:…` | apt tools (tmux, jq, git, curl, ripgrep, fd, poppler-utils, build-essential, python3), gh, jj; zrok2 only with `INCLUDE_ZROK=1` | all |
 | `globals` | `base` | user `pi` (UID 1000), global npm: pi-coding-agent, openspec, pi-flows, pi-anthropic-messages, pi-dashboard-subagents; `corepack enable` | `app`, `prod-deps`, `runtime` |
 | `app` | `globals` | full `pnpm install` (devDependencies), qa/, tests/, knip inputs, `.github/`, `.pi/skills` | `docker/test-up.sh` (via `compose.test.target.yml`) + `compose.dev.yml` (`build.target: app`) |
 | `prod-deps` | `globals` | `pnpm install --frozen-lockfile --prod`, `pnpm run build`, `docker/scripts/prune-build-only.mjs` | `runtime` (COPY of `/app` only) |
@@ -23,7 +23,7 @@ Why: trivy on `rubiaceae65/pi-dashboard:dev-3` (2026-10-23) — ~84% of fixable 
 - `tsx` — `packages/server/package.json` `dependencies` (governed by `scripts/verify-release-deps.mjs`); doctor reports it (`packages/shared/src/doctor-core.ts:1267`).
 - `playwright` (prod dep of `packages/deck3d`, mermaid harvest) — no browsers downloaded.
 - `gh` — spawned by git routes (`packages/server/src/routes/git-routes.ts:928`, `:976`; `packages/shared/src/platform/git.ts:285`).
-- `zrok2`/`zrok` — tunnel provider (`packages/server/src/tunnel/tunnel.ts:292`) + `entrypoint.sh` enrollment.
+- `zrok2`/`zrok` — **only when built with `--build-arg INCLUDE_ZROK=1`** (dev/personal build that wants the public tunnel). Default `INCLUDE_ZROK=0` = release image: no zrok binary (zrok 2.0.8's embedded Go deps — pgx, amqp091-go, smallstep/certificates, grpc — carry fixable CRITICAL/HIGH CVEs no zrok release fixes; release posture is public tunnel off). Without it the entrypoint logs `zrok not installed in this image — tunnel unavailable` and the server reports the tunnel as `unavailable` (`/api/tunnel-status`) without failing boot.
 - `jj`, git, tmux, rg, fd, pdftotext, jq — unchanged from `base`.
 - `corepack enable` shims (pnpm on demand for user projects; no store baked in).
 - Native install scripts as in `app`: node-pty, koffi, ffmpeg-static, @ffprobe-installer, protobufjs.

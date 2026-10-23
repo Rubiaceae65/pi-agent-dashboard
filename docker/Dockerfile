@@ -27,6 +27,12 @@ FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054f
 # zrok v2.0.8 (2026-10-08) and gh v2.103.0 (2026-10-21): newest stable
 # releases on 2026-10-23 (2.0.4 / 2.62.0 carried fixable CRITICAL/HIGH Go
 # module + stdlib CVEs in trivy 0.76.0).
+# INCLUDE_ZROK: zrok is an OPT-IN build component. Default "0" = release image
+# (no /usr/local/bin/zrok2: its embedded Go deps carry unfixable-by-bump
+# CRITICAL/HIGH CVEs and release deployments run with the public tunnel off).
+# Set INCLUDE_ZROK=1 for a dev/personal build that wants the public tunnel;
+# the pinned version + per-arch sha256 below then apply unchanged.
+ARG INCLUDE_ZROK=0
 ARG ZROK_VERSION=2.0.8
 ARG ZROK_SHA256_AMD64=027cc46c8b652a82f87823cec45fbb5fc878455268857e69e22fbe9dca225f3a
 ARG ZROK_SHA256_ARM64=c06f32935a88b918f03daf8a5f9f1da8c8e278bba9300b53c2666968f0ec91fc
@@ -58,8 +64,12 @@ RUN apt-get update \
 # fd-find ships the binary as `fdfind` on Debian; expose `fd` too.
 RUN ln -s "$(command -v fdfind)" /usr/local/bin/fd || true
 
-# 1.2 zrok (pinned). Map Debian arch → zrok release arch.
+# 1.2 zrok (pinned, OPT-IN via INCLUDE_ZROK=1). Map Debian arch → zrok release arch.
 RUN set -eux; \
+    if [ "${INCLUDE_ZROK}" != "1" ]; then \
+      echo "INCLUDE_ZROK=${INCLUDE_ZROK} — zrok not installed (release image)"; \
+      exit 0; \
+    fi; \
     deb_arch="$(dpkg --print-architecture)"; \
     case "${deb_arch}" in \
       amd64) zrok_arch="amd64"; zrok_sha="${ZROK_SHA256_AMD64}" ;; \

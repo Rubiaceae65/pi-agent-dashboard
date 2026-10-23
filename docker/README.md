@@ -31,7 +31,8 @@ All knobs live in `.env` (copy from `.env.example`). Highlights:
 | `PI_GATEWAY_PORT` | `9999` | Pi gateway port (external pi sessions) |
 | `PI_GATEWAY_BIND` | `0.0.0.0` | Host publish interface for the gateway (`127.0.0.1` = host-only) |
 | `PI_SPAWN_STRATEGY` | `tmux` | Session spawn strategy: `headless` or `tmux` |
-| `TUNNEL_ENABLED` | `1` | `0` passes `--no-tunnel`; set `ZROK_TOKEN` to enroll |
+| `TUNNEL_ENABLED` | `1` | `0` passes `--no-tunnel`; set `ZROK_TOKEN` to enroll. Needs an image built with `INCLUDE_ZROK=1` |
+| `INCLUDE_ZROK` (build arg) | `0` | `0` = release image without zrok (tunnel unavailable); `1` = dev/personal build with the pinned zrok2 for the public tunnel |
 | `PI_DASHBOARD_TRUSTED_NETWORKS` | — | Trusted socket-peer sources declared by the deployment, e.g. an SSO reverse proxy's upstream address (`10.244.0.243/32`). Comma/space-separated exact IPv4/IPv6 addresses or IPv4 CIDRs `/8`–`/32`; wildcards, hostnames, `/0` and broader-than-`/8` ranges, and IPv6 CIDRs are dropped with a warning. Merged into the effective trusted list at load, never written to `config.json`, not removable in the UI, and not a CORS origin allowance. Matches the TCP peer only — `X-Forwarded-For` is never trusted. Only list an address the authenticating proxy alone uses. |
 | `PI_DASHBOARD_LINKS_FILE` | — | Path to a JSON file of links the `/links/` page shows (served read-only at `/links/links.json`). Unset → the page shows "Links are not configured"; there is no built-in list. Format and example: see [Links page](../README.md#links-page-links) and `docker/links.example.json`. |
 | `MEM_LIMIT` | `4g` | Container memory ceiling |
@@ -40,7 +41,7 @@ API keys are seeded **once**: the first run writes `auth.json` into the
 `pi-state` volume; later runs ignore the env vars (the volume wins). Change
 providers anytime via the dashboard UI.
 
-**Zrok v2 in the image.** Image ships `zrok v2.0.8` (`zrok2` binary; sha256 pinned per arch in the Dockerfile). Tarball extracts `zrok2` with a symlink `zrok → zrok2` for command compatibility. When `ZROK_TOKEN` set, entrypoint enrolls headless (via `zrok2 enable <token> --headless`), avoiding TTY requirement in server context. Config dir `~/.zrok2` persists across restarts via volume.
+**Zrok v2 is opt-in (build arg `INCLUDE_ZROK`).** Default `INCLUDE_ZROK=0` = release image: no `zrok2` binary, entrypoint logs `zrok not installed in this image — tunnel unavailable` (even with `ZROK_TOKEN` set) and the server reports the tunnel `unavailable`; run with `TUNNEL_ENABLED=0`. `INCLUDE_ZROK=1` (`INCLUDE_ZROK=1 scripts/build-image.sh` or `--build-arg INCLUDE_ZROK=1`) = dev/personal build that wants the public tunnel. Such an image ships `zrok v2.0.8` (`zrok2` binary; sha256 pinned per arch in the Dockerfile). Tarball extracts `zrok2` with a symlink `zrok → zrok2` for command compatibility. When `ZROK_TOKEN` set, entrypoint enrolls headless (via `zrok2 enable <token> --headless`), avoiding TTY requirement in server context. Config dir `~/.zrok2` persists across restarts via volume.
 
 ## Workspaces (path-identical mounts)
 

@@ -66,6 +66,13 @@ export function scavengeOrphanZrokProcesses(port: number): number[] {
 }
 
 // ── Tunnel lifecycle ────────────────────────────────────────────────
+/**
+ * The one message for "tunnel requested but the zrok binary is absent".
+ * zrok is an opt-in image component (Dockerfile `INCLUDE_ZROK=1`); release
+ * images ship without it, so this is an expected, non-fatal state.
+ */
+export const TUNNEL_UNAVAILABLE_NO_ZROK = "tunnel unavailable: zrok not installed";
+
 export function createTunnel(
   port: number,
   reservedToken?: string,

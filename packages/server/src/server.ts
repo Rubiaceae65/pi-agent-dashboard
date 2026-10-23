@@ -240,7 +240,7 @@ import { removePid, writePid } from "./spawn-process/server-pid.js";
 import { armSpawnWatchdog } from "./spawn-process/spawn-register-watchdog.js";
 import { createTerminalGateway } from "./terminal/terminal-gateway.js";
 import { createTerminalManager, deriveTranscriptCapBytes } from "./terminal/terminal-manager.js";
-import { cleanupStaleZrok, createTunnel, deleteTunnel, detectZrokBinary, ensureReservedName, getTunnelUrl, liveTunnelOrigins, scavengeOrphanZrokProcesses } from "./tunnel/tunnel.js";
+import { cleanupStaleZrok, createTunnel, deleteTunnel, detectZrokBinary, ensureReservedName, getTunnelUrl, liveTunnelOrigins, scavengeOrphanZrokProcesses, TUNNEL_UNAVAILABLE_NO_ZROK } from "./tunnel/tunnel.js";
 import { startTunnelWatchdog, stopTunnelWatchdog } from "./tunnel/tunnel-watchdog.js";
 
 export interface ServerConfig {
@@ -3369,6 +3369,12 @@ export async function createServer(config: ServerConfig): Promise<DashboardServe
               );
             }
           }
+        } else {
+          // zrok is an opt-in image component (Dockerfile INCLUDE_ZROK=1);
+          // release images ship without it. A requested tunnel then degrades
+          // to "unavailable" (see /api/tunnel-status) — boot never fails or
+          // retries on it.
+          console.warn(`[tunnel] ${TUNNEL_UNAVAILABLE_NO_ZROK}`);
         }
       }
 

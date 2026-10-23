@@ -8,6 +8,10 @@
 # Provenance: the image carries org.opencontainers.image.revision=<git HEAD>,
 #   org.opencontainers.image.source=https://github.com/Rubiaceae65/pi-agent-dashboard and
 #   org.opencontainers.image.version=<"version" in package.json>. SOURCE_DATE_EPOCH = committer time of HEAD.
+#
+# INCLUDE_ZROK (env, default 0): passed as --build-arg. 0 = release image, no zrok2 binary
+#   (public tunnel unavailable). INCLUDE_ZROK=1 = dev/personal build that wants the public
+#   zrok tunnel (pinned zrok2, sha256-verified). Never set to 1 for a release image.
 set -euo pipefail
 
 SOURCE="https://github.com/Rubiaceae65/pi-agent-dashboard"
@@ -33,11 +37,14 @@ git diff --quiet || die "dirty tree (unstaged changes) - commit first"
 git diff --cached --quiet || die "dirty tree (staged changes) - commit first"
 [ -z "$(git ls-files --others --exclude-standard)" ] || die "untracked files in the tree - commit or remove them"
 
+INCLUDE_ZROK="${INCLUDE_ZROK:-0}"
+[[ "$INCLUDE_ZROK" =~ ^[01]$ ]] || die "INCLUDE_ZROK must be 0 or 1, got '$INCLUDE_ZROK'"
 REV="$(git rev-parse HEAD)"
 export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"
-echo "build-image: $REF version=$VERSION rev=$REV"
+echo "build-image: $REF version=$VERSION rev=$REV include_zrok=$INCLUDE_ZROK"
 DOCKER_BUILDKIT=1 docker buildx build --load --provenance=false --sbom=false \
     --build-arg SOURCE_DATE_EPOCH \
+    --build-arg INCLUDE_ZROK="$INCLUDE_ZROK" \
     --label "org.opencontainers.image.revision=$REV" \
     --label "org.opencontainers.image.source=$SOURCE" \
     --label "org.opencontainers.image.version=$VERSION" \
