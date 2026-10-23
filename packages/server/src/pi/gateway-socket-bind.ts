@@ -246,7 +246,8 @@ function ownerIsProvablyDead(socketPath: string): boolean {
  * Exported for tests.
  */
 export function processStartEpochMs(pid: number): number | null {
-  if (process.platform !== "linux") return null;
+  // /proc/<pid>/stat is Linux-only; elsewhere the start time is unknowable and null is the intended fallback.
+  if (process.platform !== "linux") return null; // platform-branch-ok
   try {
     const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
     // Field 2 (comm) may contain spaces/parens: parse after the LAST ')'.
