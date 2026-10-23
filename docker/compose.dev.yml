@@ -13,6 +13,10 @@
 
 services:
   pi-dashboard:
+    # Dev mode needs vite + devDependencies: build the full `app` stage, not
+    # the slim default `runtime` stage. See docs/runtime-image.md.
+    build:
+      target: app
     # Run the server in dev mode (entrypoint appends env port flags).
     command: ["start", "--dev"]
     environment:

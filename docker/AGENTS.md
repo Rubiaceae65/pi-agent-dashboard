@@ -11,6 +11,7 @@ Files in this directory. One row per file. Non-source area. Subdir files owned b
 | `compose.kroki.yml` | Kroki diagram rendering overlay. Adds `yuzutech/kroki` with `KROKI_SAFE_MODE=secure` and no host ports, atomically sets `KROKI_URL=http://kroki:8000` on `pi-dashboard`. See change: diagram-rendering. |
 | `compose.test.cap.yml` | Overlay-mode capability layer. Grants `cap_add: [SYS_ADMIN]` for `mount -t overlay` in test-entrypoint.sh. → see `compose.test.cap.yml.AGENTS.md` |
 | `compose.test.yml` | Test overlay on `compose.yml`. Sets `PI_DASHBOARD_NO_MDNS=1`, `DASHBOARD_PORT="${DASHBOARD_PORT:-18000}"`,… → see `compose.test.yml.AGENTS.md` |
+| `compose.test.target.yml` | Harness build-target overlay: `build.target: app` (full dev/test tree; Dockerfile default is slim `runtime`). Layered by `test-up.sh` after `compose.test.yml`. See docs/runtime-image.md. |
 | `compose.yml` | Base compose. Service `pi-dashboard`, `init:true`, env-driven ports, named volumes `pi-state`→`/home/pi/.pi`… → see `compose.yml.AGENTS.md` |
 | `Dockerfile` | Multi-stage. base: `node:24-bookworm-slim` +… → see `Dockerfile.AGENTS.md` |
 | `entrypoint.sh` | Runs `seed-auth.js`, seeds spawnStrategy into config.json first-run-only, starts tmux server, enrolls zrok v2… → see `entrypoint.sh.AGENTS.md` |
