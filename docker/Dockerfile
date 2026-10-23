@@ -147,6 +147,12 @@ RUN if getent passwd 1000 >/dev/null; then userdel -r "$(getent passwd 1000 | cu
 # published release. Raise it deliberately, together with the pins below.
 ARG NPM_BEFORE=2026-10-21T00:00:00Z
 
+# Upgrade the npm bundled with the node base image: its own node_modules ship in
+# runtime and trivy (dev-6, 2026-10-24) flagged brace-expansion 5.0.9 and
+# undici 6.28.0 there (CVE-2026-102276/102278, CVE-2026-19534). npm 11.21.1
+# (2026-10-15) bundles brace-expansion 5.0.12 + undici 6.29.0.
+RUN npm install -g --before="${NPM_BEFORE}" npm@11.21.1 && npm --version
+
 # 1.4 Global pi coding agent + openspec (spawned/probed by the dashboard).
 # Install must be fatal; the version probes stay non-fatal (grouped so a
 # non-zero `--version` can't mask an `npm install -g` failure).
@@ -159,6 +165,24 @@ ARG NPM_BEFORE=2026-10-21T00:00:00Z
 RUN npm install -g --before="${NPM_BEFORE}" @earendil-works/pi-coding-agent@0.86.1 @fission-ai/openspec@1.11.0 \
  && { pi --version || true; } \
  && { openspec --version || true; }
+
+# Enable corepack so `pnpm` resolves to the version pinned by the root
+# package.json `packageManager` field (pnpm@11.15.1). The global `npm install
+# -g` tool installs above stay npm (Column C-style user installs).
+RUN corepack enable
+
+# ============================ app stage ====================================
+# Full dev/test tree, unchanged from the single-stage image. NOT the default
+# target: build it with `--target app` (the test harness and dev overlay do).
+FROM globals AS app
+
+# The flow-plugin e2e peers live in `app` only (2026-10-24): `runtime` never
+# wires them (only test-entrypoint.sh does, via PI_TEST_PEERS, and the harness
+# builds `--target app`), and in `globals` they shipped two nested, stale
+# pi-coding-agent trees (0.75.5 via subagents' peer range) carrying
+# undici/ws/protobufjs/brace-expansion HIGH findings into the runtime image.
+# ARGs do not cross stages: keep this default equal to the `globals` one.
+ARG NPM_BEFORE=2026-10-21T00:00:00Z
 
 # 1.4b Flow-plugin e2e peers (change: add-flow-plugin-e2e-tests). The pi-flows
 # engine + the anthropic-messages bridge peer are BAKED here; test-entrypoint.sh
@@ -182,16 +206,6 @@ RUN npm install -g --before="${NPM_BEFORE}" \
  && ls -d /usr/local/lib/node_modules/@blackbelt-technology/pi-flows \
          /usr/local/lib/node_modules/@blackbelt-technology/pi-anthropic-messages \
          /usr/local/lib/node_modules/@blackbelt-technology/pi-dashboard-subagents
-
-# Enable corepack so `pnpm` resolves to the version pinned by the root
-# package.json `packageManager` field (pnpm@11.15.1). The global `npm install
-# -g` tool installs above stay npm (Column C-style user installs).
-RUN corepack enable
-
-# ============================ app stage ====================================
-# Full dev/test tree, unchanged from the single-stage image. NOT the default
-# target: build it with `--target app` (the test harness and dev overlay do).
-FROM globals AS app
 
 WORKDIR /app
 

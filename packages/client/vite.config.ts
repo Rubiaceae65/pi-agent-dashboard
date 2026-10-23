@@ -173,7 +173,7 @@ export default defineConfig({
               "@dnd-kit/sortable",
               "@dnd-kit/utilities",
             ],
-            "util": ["fuse.js", "qrcode", "wouter", "ansi-to-react"],
+            "util": ["fuse.js", "qrcode", "wouter"],
             // Monaco is heavy + only referenced by the lazily-imported
             // MonacoBuffer, so this chunk is fetched on first text-file open.
             // See change: add-internal-monaco-editor-pane.

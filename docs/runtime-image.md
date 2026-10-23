@@ -9,8 +9,8 @@ Why: trivy on `rubiaceae65/pi-dashboard:dev-3` (2026-10-23) — ~84% of fixable 
 | Stage | From | Content | Used by |
 |---|---|---|---|
 | `base` | `node:24-bookworm-slim@sha256:…` | apt tools (tmux, jq, git, curl, ripgrep, fd, poppler-utils, build-essential, python3), gh, jj; zrok2 only with `INCLUDE_ZROK=1` | all |
-| `globals` | `base` | user `pi` (UID 1000), global npm: pi-coding-agent, openspec, pi-flows, pi-anthropic-messages, pi-dashboard-subagents; `corepack enable` | `app`, `prod-deps`, `runtime` |
-| `app` | `globals` | full `pnpm install` (devDependencies), qa/, tests/, knip inputs, `.github/`, `.pi/skills` | `docker/test-up.sh` (via `compose.test.target.yml`) + `compose.dev.yml` (`build.target: app`) |
+| `globals` | `base` | user `pi` (UID 1000), npm self-upgrade to 11.21.1, global npm: pi-coding-agent, openspec; `corepack enable` | `app`, `prod-deps`, `runtime` |
+| `app` | `globals` | flow-plugin e2e peers (global pi-flows, pi-anthropic-messages, pi-dashboard-subagents; test-only, kept out of `runtime`), full `pnpm install` (devDependencies), qa/, tests/, knip inputs, `.github/`, `.pi/skills` | `docker/test-up.sh` (via `compose.test.target.yml`) + `compose.dev.yml` (`build.target: app`) |
 | `prod-deps` | `globals` | `pnpm install --frozen-lockfile --prod`, `pnpm run build`, `docker/scripts/prune-build-only.mjs` | `runtime` (COPY of `/app` only) |
 | `runtime` | `globals` | `/app` from `prod-deps`, entrypoint, supervise-daemon, `npm link`, build-essential/python3 purged | deployment (default target) |
 
