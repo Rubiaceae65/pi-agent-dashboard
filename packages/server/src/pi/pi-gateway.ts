@@ -1085,11 +1085,16 @@ export function createPiGateway(
      * per-bridge property rather than a per-server mode (D10).
      */
     async startOnSocket(path: string) {
+      // Bind FIRST: a refused bind (live incumbent) must leave the gateway
+      // untouched so the caller's loopback fallback `start()` can still run.
+      // Creating `wss` before the bind made that fallback throw "would orphan
+      // the socket listener" for a listener that never existed, failing the
+      // whole startup (crash loop on a stale socket after a container restart).
+      const server = await bindGatewaySocket({ socketPath: path });
       if (!wss) {
         wss = new WebSocketServer({ noServer: true });
         attachConnectionHandler(wss, "unix");
       }
-      const server = await bindGatewaySocket({ socketPath: path });
       // Capture the CURRENT wss: routing socket upgrades through a mutable
       // binding would send them to whatever server a later start() installed.
       const target = wss;

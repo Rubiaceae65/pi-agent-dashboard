@@ -40,7 +40,7 @@ API keys are seeded **once**: the first run writes `auth.json` into the
 `pi-state` volume; later runs ignore the env vars (the volume wins). Change
 providers anytime via the dashboard UI.
 
-**Zrok v2 in the image.** Image ships `zrok v2.0.4` (`zrok2` binary). Tarball extracts `zrok2` with a symlink `zrok → zrok2` for command compatibility. When `ZROK_TOKEN` set, entrypoint enrolls headless (via `zrok2 enable <token> --headless`), avoiding TTY requirement in server context. Config dir `~/.zrok2` persists across restarts via volume.
+**Zrok v2 in the image.** Image ships `zrok v2.0.8` (`zrok2` binary; sha256 pinned per arch in the Dockerfile). Tarball extracts `zrok2` with a symlink `zrok → zrok2` for command compatibility. When `ZROK_TOKEN` set, entrypoint enrolls headless (via `zrok2 enable <token> --headless`), avoiding TTY requirement in server context. Config dir `~/.zrok2` persists across restarts via volume.
 
 ## Workspaces (path-identical mounts)
 

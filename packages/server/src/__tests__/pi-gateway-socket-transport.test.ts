@@ -118,6 +118,22 @@ describe("pi-gateway over a unix socket", () => {
     expect(() => gateway?.start(0)).toThrow(/orphan the socket listener/);
   });
 
+  it("a REFUSED socket bind leaves the gateway free for the loopback fallback (no orphan error)", async () => {
+    // A live incumbent holds the path, so startOnSocket must refuse (D9)…
+    const incumbent = createPiGateway(createMemorySessionManager(), { pingInterval: 0 });
+    await incumbent.startOnSocket(sockPath);
+    try {
+      gateway = createPiGateway(createMemorySessionManager(), { pingInterval: 0 });
+      await expect(gateway.startOnSocket(sockPath)).rejects.toThrow(/already in use/);
+      // …and server.ts then falls back to TCP. That used to throw
+      // "start() after startOnSocket() would orphan the socket listener",
+      // failing the whole startup.
+      expect(() => gateway?.start(0, "127.0.0.1")).not.toThrow();
+    } finally {
+      incumbent.stop();
+    }
+  });
+
   // Task 2.9: a UDS listener's address() is a string, and reporting null
   // blanked the gateway endpoint in the settings UI.
   it("reports the socket path from address() and transport()", async () => {

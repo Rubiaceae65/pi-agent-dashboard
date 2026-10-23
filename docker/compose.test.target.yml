@@ -1,0 +1,12 @@
+# pi-dashboard — test harness build target.
+#
+# docker/Dockerfile's default (last) stage is the slim production `runtime`
+# (no devDependencies, qa/, tests/, knip inputs). The harness needs the FULL
+# tree, i.e. stage `app`. test-up.sh layers this file after compose.test.yml.
+# Kept separate from compose.test.yml so that file stays untouched.
+# See docs/runtime-image.md.
+
+services:
+  pi-dashboard:
+    build:
+      target: app
