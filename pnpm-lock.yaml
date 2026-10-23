@@ -7,6 +7,20 @@ settings:
 overrides:
   bonjour-service: 1.4.2
   '@earendil-works/pi-coding-agent': 0.86.1
+  undici@6: 6.28.1
+  undici@7: 7.29.1
+  brace-expansion@1: 1.1.20
+  brace-expansion@2: 2.1.6
+  brace-expansion@5: 5.0.11
+  '@xmldom/xmldom@0.9': 0.9.12
+  fastify@5: 5.12.2
+  fast-uri@3: 3.1.7
+  fast-uri@4: 4.1.4
+  form-data@2: 2.5.6
+  handlebars@4: 4.7.10
+  nodemailer@9: 9.1.0
+  proxy-addr@2: 2.0.8
+  source-map-js@1: 1.2.2
 
 importers:
 
@@ -143,8 +157,8 @@ importers:
         specifier: ^1.6.1
         version: 1.6.1
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -180,8 +194,8 @@ importers:
         specifier: ^1.6.1
         version: 1.6.1
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -227,8 +241,8 @@ importers:
         specifier: ^8.18.1
         version: 8.18.1
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -267,8 +281,8 @@ importers:
         specifier: ^14.27.0
         version: 14.27.0
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
     devDependencies:
       '@testing-library/react':
         specifier: ^16.1.0
@@ -570,8 +584,8 @@ importers:
         specifier: ^8.17.1
         version: 8.20.0
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       wouter:
         specifier: ^3.0.0
         version: 3.10.0(react@19.2.8)
@@ -832,8 +846,8 @@ importers:
         specifier: ^11.2.0
         version: 11.2.0
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       oauth4webapi:
         specifier: ^3.8.8
         version: 3.8.8
@@ -866,8 +880,8 @@ importers:
         specifier: ^1.6.1
         version: 1.6.1
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -910,8 +924,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.18
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -934,8 +948,8 @@ importers:
         specifier: ^1.6.1
         version: 1.6.1
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -1009,8 +1023,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.5(@types/react@19.2.18)
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -1055,8 +1069,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.5(@types/react@19.2.18)
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -1086,8 +1100,8 @@ importers:
         version: 11.2.0
     devDependencies:
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
@@ -1175,8 +1189,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.18
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -1238,8 +1252,8 @@ importers:
         specifier: ^8.0.3
         version: 8.0.4
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
       iconv-lite:
         specifier: ^0.6.3
         version: 0.6.3
@@ -1367,8 +1381,8 @@ importers:
         specifier: ^1.6.1
         version: 1.6.1
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -1397,8 +1411,8 @@ importers:
         specifier: ^11.2.0
         version: 11.2.0
       fastify:
-        specifier: ^5.0.0
-        version: 5.12.1
+        specifier: 5.12.2
+        version: 5.12.2
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -5053,10 +5067,9 @@ packages:
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
     engines: {node: '>=10.0.0'}
 
-  '@xmldom/xmldom@0.9.10':
-    resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
+  '@xmldom/xmldom@0.9.12':
+    resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
     engines: {node: '>=14.6'}
-    deprecated: this version has critical issues, please update to the latest version
 
   '@xterm/addon-attach@0.12.0':
     resolution: {integrity: sha512-1lxvXM4JYSm60lbFmE8WMOy2oF2ip3Ye8jWorSAmwy7x8FiC53netEJ5RguL8+FSRj79MUQsNCb2hprY2QA2ig==}
@@ -5422,14 +5435,14 @@ packages:
   bplist-creator@0.0.8:
     resolution: {integrity: sha512-Za9JKzD6fjLC16oX2wsXfc+qBEhJBJB1YPInoAQpMLhDuj5aVOv1baGeIQSq1Fr3OCqzvsoQcSBSwGId/Ja2PA==}
 
-  brace-expansion@1.1.18:
-    resolution: {integrity: sha512-Edep/X9fGqVNmzKBVsDYIOtD+z1tuezV70LBjdCst9Tqu76lsnvRiZ6oTic1n+/BIwX6QDGAO94PN4N2SADvtw==}
+  brace-expansion@1.1.20:
+    resolution: {integrity: sha512-5/qk29RyvatwgzNMrvGjkIhKYzpJ0OUnPK+9TU+zS/CMJqzmb+UD0irWu42JfpUvO636fxd8IstgiydZRM/76A==}
 
-  brace-expansion@2.1.4:
-    resolution: {integrity: sha512-hGfVzPxthbf3+2yjg/RBs60cB0FhqBS/zvdV/4wn4/BmN0bNMMHPc4V/BbFieqf1TKAGGAHnY4eSjajCl0f2Xg==}
+  brace-expansion@2.1.6:
+    resolution: {integrity: sha512-pi/WFpBvCBmB/NsURt7hW5sDvuOqvJaDMDai7CrlT9xoehzWRzo/dhQRKqOhpPvlnicVaTzHCbzGnnTgpvMTFw==}
 
-  brace-expansion@5.0.9:
-    resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
+  brace-expansion@5.0.11:
+    resolution: {integrity: sha512-awigjhi6cLTh90bdw6+QJ9CtmJmyYhEIi70iCbc8Rozn04Fw9FeQIBjv/E22FFGuCGx1bLJyUfB64x/szUSXUg==}
     engines: {node: 20 || >=22}
 
   braces@3.0.3:
@@ -6587,11 +6600,11 @@ packages:
   fast-string-width@3.0.2:
     resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
 
-  fast-uri@3.1.6:
-    resolution: {integrity: sha512-7Ical1vFEMr0onbVzEDIreM22I4khW+fzyQPwvAFWBp1iwdshSZRsL4jjRvPG9JP1uiqMHRto+YU6R2/CzDz5Q==}
+  fast-uri@3.1.7:
+    resolution: {integrity: sha512-dOvZVzjdZdz7phd9v6jCbwxrBW3fK6n8Rc0CtdmM4bumzMnxywBYhuph6J819RRw/ku+rLbelwfMunktuzVVHg==}
 
-  fast-uri@4.1.3:
-    resolution: {integrity: sha512-7+72G6vLt7jjNas8SmSATx2qeyRIjxeqO3i4IkmDTxlqYZRKANhOe1bnovcp4WZmvsYrp60WyqPyHqgRiX0yXw==}
+  fast-uri@4.1.4:
+    resolution: {integrity: sha512-dODXrIxlS9JSdgAnhIUKOosKV1oMtU2VtVw87QRaHzyl5jxO290Ii5tEZfCfzfWNHi3jKWwBSdQj0qIyshdZdQ==}
 
   fast-wrap-ansi@0.2.2:
     resolution: {integrity: sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==}
@@ -6602,8 +6615,8 @@ packages:
   fastify-plugin@6.0.0:
     resolution: {integrity: sha512-fZOty7z3O7vOliF6d8bHE3wiEh1KcNnKEQensSgTk9C1DvN6nRLS++XVd86v33Hw/8u9Un8A1zDrQ8ujcQDHEg==}
 
-  fastify@5.12.1:
-    resolution: {integrity: sha512-FWi+tQvwxR/PeRX7Z2mhfEF5ozJ3jn9asiiclzKXNSzJRHAYcU924aIOKAdHFJ+YIKieh3cqr1IwCOvTr41B3Q==}
+  fastify@5.12.2:
+    resolution: {integrity: sha512-npAgfhAigNiLOhCZEg7uFWThMrYoiDX/7/VyzicXSrVSXz6K/KYekW+QpOk7WOnZER0U7MmjvoDHV6qO5x4wKg==}
 
   fastq@1.20.2:
     resolution: {integrity: sha512-UpGiiODyCGprM8EPP6JodP6jC9Rws6TCuiDOD+nn0CJhR8guI3g/ozo4ugL0vJ+Yz1UtJuuRPqvQuybVOF1VQA==}
@@ -6717,8 +6730,8 @@ packages:
   forever-agent@0.6.1:
     resolution: {integrity: sha512-j0KLYPhm6zeac4lz3oJ3o65qvgQCcPubiyotZrXqEaG4hNagNYO8qdlUrX5vwqv9ohqeT/Z3j6+yW067yWWdUw==}
 
-  form-data@2.3.3:
-    resolution: {integrity: sha512-1lLKB2Mu3aGP1Q/2eCOx0fNbRMe7XdwktwOruhfqqd0rIJWwN4Dh+E3hrPSlDCXnSR7UtZ1N38rVXm+6+MEhJQ==}
+  form-data@2.5.6:
+    resolution: {integrity: sha512-Ogz/E85h9tlfJzpI6TuFpGcHZFhLrb9Gw8wq9v40CxSCPnv7ahKr6Xgtkn0KYCDQJ8DNn5VoMO8EXr9V5PadyA==}
     engines: {node: '>= 0.12'}
 
   form-data@4.0.6:
@@ -6962,8 +6975,8 @@ packages:
   hachure-fill@0.5.2:
     resolution: {integrity: sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==}
 
-  handlebars@4.7.9:
-    resolution: {integrity: sha512-4E71E0rpOaQuJR2A3xDZ+GM1HyWYv1clR58tC8emQNeQe3RH7MAzSbat+V0wG78LQBo6m6bzSG/L4pBuCsgnUQ==}
+  handlebars@4.7.10:
+    resolution: {integrity: sha512-P5VJMVM7qgBn6vjXMw8WG9uVI+ncf2pi72j4de4yz5ZULLj2RGqLYaKOYGsgyrViQ0tePOVlN1tDCCXXtFqXKg==}
     engines: {node: '>=0.4.7'}
     hasBin: true
 
@@ -8371,8 +8384,8 @@ packages:
     resolution: {integrity: sha512-YHs7BmmcsdAI5Ozuf8JZo6PT0mv2GIWC9vMfvUC3dp65M8hn7Ux8CPL+2oBI7juNuj9d0ndhTcznq2ODBps9cQ==}
     engines: {node: '>=18'}
 
-  nodemailer@9.0.3:
-    resolution: {integrity: sha512-n+YP+NKwR5zRWa60k3GiQ6Q3B4KXCoAw40dAKeCtYn020iNN74aWK2liXIC3ZEATeGql7we3tE3t8QwhY0eskw==}
+  nodemailer@9.1.0:
+    resolution: {integrity: sha512-xj1Ri5Sau3qpPffHJwi2bY0oWVVWYq62Ph17l+2v1xXpxjqTls3YPc3L8dub9mcJpxj+1ucNnuYVqLlgh4pmDA==}
     engines: {node: '>=6.0.0'}
 
   nopt@6.0.0:
@@ -8956,8 +8969,8 @@ packages:
     resolution: {integrity: sha512-dYDWdjSl5RNb7SgPxGQcRU+GtvP7s2fpkrY0r432PcOIaZ0/rBcxEZnQN67iJhFuQiVw754JDoPruPCNdGsbjg==}
     engines: {node: '>=12.0.0'}
 
-  proxy-addr@2.0.7:
-    resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
+  proxy-addr@2.0.8:
+    resolution: {integrity: sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==}
     engines: {node: '>= 0.10'}
 
   proxy-agent-negotiate@1.1.0:
@@ -9562,8 +9575,8 @@ packages:
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
 
-  source-map-js@1.2.1:
-    resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
+  source-map-js@1.2.2:
+    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
 
   source-map-support@0.5.21:
@@ -10062,12 +10075,12 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@6.28.0:
-    resolution: {integrity: sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==}
+  undici@6.28.1:
+    resolution: {integrity: sha512-zWpdTVD54H48CIybL0rWQ3ukpb9d23wM7eH5RtfdmeP70cWHNjtfo7P4vZX+5CoDcO53J4Pu5uXp7lNfjc6DRA==}
     engines: {node: '>=18.17'}
 
-  undici@7.29.0:
-    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+  undici@7.29.1:
+    resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
     engines: {node: '>=20.18.1'}
 
   undici@8.10.2:
@@ -11340,7 +11353,7 @@ snapshots:
       discord-api-types: 0.38.55
       magic-bytes.js: 1.13.1
       tslib: 2.8.1
-      undici: 6.28.0
+      undici: 6.28.1
 
   '@discordjs/util@1.2.0':
     dependencies:
@@ -11780,7 +11793,7 @@ snapshots:
       semver: 7.8.5
       sumchecker: 3.0.1(supports-color@8.1.1)
     optionalDependencies:
-      undici: 7.29.0
+      undici: 7.29.1
     transitivePeerDependencies:
       - supports-color
 
@@ -12185,7 +12198,7 @@ snapshots:
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
-      fast-uri: 4.1.3
+      fast-uri: 4.1.4
 
   '@fastify/compress@9.2.0':
     dependencies:
@@ -12247,7 +12260,7 @@ snapshots:
       fast-querystring: 1.1.2
       fastify-plugin: 6.0.0
       toad-cache: 3.7.4
-      undici: 7.29.0
+      undici: 7.29.1
 
   '@fastify/send@4.1.1':
     dependencies:
@@ -13516,7 +13529,7 @@ snapshots:
       partial-json: 0.1.7
       proxy-agent: 6.5.0(supports-color@8.1.1)
       typebox: 1.3.20
-      undici: 7.29.0
+      undici: 7.29.1
       zod-to-json-schema: 3.25.2(zod@4.5.1)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -13550,7 +13563,7 @@ snapshots:
       proper-lockfile: 4.1.2
       strip-ansi: 7.2.0
       typebox: 1.3.20
-      undici: 7.29.0
+      undici: 7.29.1
       uuid: 14.0.2
       yaml: 2.9.0
     optionalDependencies:
@@ -14155,7 +14168,7 @@ snapshots:
       jiti: 2.7.0
       lightningcss: 1.32.0
       magic-string: 0.30.21
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
       tailwindcss: 4.3.3
 
   '@tailwindcss/oxide-android-arm64@4.3.3':
@@ -14778,7 +14791,7 @@ snapshots:
 
   '@xmldom/xmldom@0.8.15': {}
 
-  '@xmldom/xmldom@0.9.10': {}
+  '@xmldom/xmldom@0.9.12': {}
 
   '@xterm/addon-attach@0.12.0': {}
 
@@ -14867,7 +14880,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.6
+      fast-uri: 3.1.7
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -15078,7 +15091,7 @@ snapshots:
       '@asciidoctor/cli': 4.0.0(@asciidoctor/core@3.0.4)
       '@asciidoctor/core': 3.0.4
       ejs: 3.1.10
-      handlebars: 4.7.9
+      handlebars: 4.7.10
       nunjucks: 3.2.4
       pug: 3.0.4
     transitivePeerDependencies:
@@ -15218,16 +15231,16 @@ snapshots:
       stream-buffers: 2.2.0
     optional: true
 
-  brace-expansion@1.1.18:
+  brace-expansion@1.1.20:
     dependencies:
       balanced-match: 1.0.2
       concat-map: 0.0.1
 
-  brace-expansion@2.1.4:
+  brace-expansion@2.1.6:
     dependencies:
       balanced-match: 1.0.2
 
-  brace-expansion@5.0.9:
+  brace-expansion@5.0.11:
     dependencies:
       balanced-match: 4.0.4
 
@@ -15701,7 +15714,7 @@ snapshots:
   css-tree@3.2.1:
     dependencies:
       mdn-data: 2.27.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   css.escape@1.5.1: {}
 
@@ -16051,7 +16064,7 @@ snapshots:
       lodash.snakecase: 4.1.1
       magic-bytes.js: 1.13.1
       tslib: 2.8.1
-      undici: 6.28.0
+      undici: 6.28.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -16555,7 +16568,7 @@ snapshots:
       on-finished: 2.4.1
       once: 1.4.0
       parseurl: 1.3.3
-      proxy-addr: 2.0.7
+      proxy-addr: 2.0.8
       qs: 6.15.3
       range-parser: 1.3.0
       router: 2.2.0(supports-color@8.1.1)
@@ -16628,7 +16641,7 @@ snapshots:
       '@fastify/merge-json-schemas': 0.2.1
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
-      fast-uri: 4.1.3
+      fast-uri: 4.1.4
       json-schema-ref-resolver: 3.0.0
       rfdc: 1.4.1
 
@@ -16644,9 +16657,9 @@ snapshots:
     dependencies:
       fast-string-truncated-width: 3.0.3
 
-  fast-uri@3.1.6: {}
+  fast-uri@3.1.7: {}
 
-  fast-uri@4.1.3: {}
+  fast-uri@4.1.4: {}
 
   fast-wrap-ansi@0.2.2:
     dependencies:
@@ -16658,7 +16671,7 @@ snapshots:
 
   fastify-plugin@6.0.0: {}
 
-  fastify@5.12.1:
+  fastify@5.12.2:
     dependencies:
       '@fastify/ajv-compiler': 4.0.6
       '@fastify/error': 4.2.0
@@ -16818,11 +16831,14 @@ snapshots:
   forever-agent@0.6.1:
     optional: true
 
-  form-data@2.3.3:
+  form-data@2.5.6:
     dependencies:
       asynckit: 0.4.0
       combined-stream: 1.0.8
+      es-set-tostringtag: 2.1.0
+      hasown: 2.0.4
       mime-types: 2.1.35
+      safe-buffer: 5.2.1
     optional: true
 
   form-data@4.0.6:
@@ -17142,7 +17158,7 @@ snapshots:
 
   hachure-fill@0.5.2: {}
 
-  handlebars@4.7.9:
+  handlebars@4.7.10:
     dependencies:
       minimist: 1.2.8
       neo-async: 2.6.2
@@ -17773,7 +17789,7 @@ snapshots:
       saxes: 6.0.0
       symbol-tree: 3.2.4
       tough-cookie: 6.0.2
-      undici: 7.29.0
+      undici: 7.29.1
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -18222,7 +18238,7 @@ snapshots:
       iconv-lite: 0.7.3
       libmime: 5.4.1
       linkify-it: 5.0.2
-      nodemailer: 9.0.3
+      nodemailer: 9.1.0
       punycode.js: 2.3.1
       tlds: 1.261.0
 
@@ -18767,19 +18783,19 @@ snapshots:
 
   minimatch@10.2.6:
     dependencies:
-      brace-expansion: 5.0.9
+      brace-expansion: 5.0.11
 
   minimatch@3.1.5:
     dependencies:
-      brace-expansion: 1.1.18
+      brace-expansion: 1.1.20
 
   minimatch@5.1.9:
     dependencies:
-      brace-expansion: 2.1.4
+      brace-expansion: 2.1.6
 
   minimatch@9.0.9:
     dependencies:
-      brace-expansion: 2.1.4
+      brace-expansion: 2.1.6
 
   minimist@1.2.8: {}
 
@@ -18940,7 +18956,7 @@ snapshots:
       semver: 7.8.5
       tar: 7.5.22
       tinyglobby: 0.2.17
-      undici: 6.28.0
+      undici: 6.28.1
       which: 6.0.1
 
   node-int64@0.4.0: {}
@@ -18951,7 +18967,7 @@ snapshots:
 
   node-releases@2.0.54: {}
 
-  nodemailer@9.0.3: {}
+  nodemailer@9.1.0: {}
 
   nopt@6.0.0:
     dependencies:
@@ -19472,7 +19488,7 @@ snapshots:
 
   plist@3.1.1:
     dependencies:
-      '@xmldom/xmldom': 0.9.10
+      '@xmldom/xmldom': 0.9.12
       base64-js: 1.5.1
       xmlbuilder: 15.1.1
 
@@ -19505,7 +19521,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.18
       picocolors: 1.1.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   postject@1.0.0-alpha.6:
     dependencies:
@@ -19579,7 +19595,7 @@ snapshots:
       '@types/node': 26.4.0
       long: 5.3.2
 
-  proxy-addr@2.0.7:
+  proxy-addr@2.0.8:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
@@ -19979,7 +19995,7 @@ snapshots:
       combined-stream: 1.0.8
       extend: 3.0.2
       forever-agent: 0.6.1
-      form-data: 2.3.3
+      form-data: 2.5.6
       har-validator: 5.1.5
       http-signature: 1.2.0
       is-typedarray: 1.0.0
@@ -20380,7 +20396,7 @@ snapshots:
     dependencies:
       atomic-sleep: 1.0.0
 
-  source-map-js@1.2.1: {}
+  source-map-js@1.2.2: {}
 
   source-map-support@0.5.21:
     dependencies:
@@ -20857,9 +20873,9 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  undici@6.28.0: {}
+  undici@6.28.1: {}
 
-  undici@7.29.0: {}
+  undici@7.29.1: {}
 
   undici@8.10.2: {}
 

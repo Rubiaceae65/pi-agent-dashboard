@@ -1,0 +1,20 @@
+Scope: all 53 workspace projects
+✓ Lockfile passes supply-chain policies (verified 7h ago)
+Lockfile is up to date, resolution step is skipped
+Packages: +2174
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Packages are hard linked from the content-addressable store to the virtual store.
+  Content-addressable store is at: /projects/image-provenance-claude-20261021/repos/dmb-pnpm-store/v11
+  Virtual store is at:             node_modules/.pnpm
+[WARN] The git-hosted package fetched from "https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2" has to be built but the build scripts were ignored.
+
+dependencies:
++ @blackbelt-technology/pi-dashboard-extension 0.8.0 <- packages/extension
++ @blackbelt-technology/pi-dashboard-server 0.8.0 <- packages/server
++ @blackbelt-technology/pi-dashboard-web 0.8.0 <- packages/client
+
+devDependencies:
++ @blackbelt-technology/pi-dashboard-bus-client 0.8.0 <- packages/bus-client
++ @blackbelt-technology/pi-dashboard-shared 0.8.0 <- packages/shared
+
+Done in 20.6s using pnpm v11.15.1
