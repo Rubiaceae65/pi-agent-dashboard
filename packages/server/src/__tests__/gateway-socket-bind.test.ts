@@ -183,8 +183,9 @@ describe("stale-socket reclamation (pidfile discriminator)", () => {
   });
 
   it("still refuses when the recorded pid is alive", async () => {
+    // A live process OTHER than us that predates the pidfile: a plausible owner.
     fs.writeFileSync(sockPath, "");
-    fs.writeFileSync(`${sockPath}.pid`, `${process.pid}\n`);
+    fs.writeFileSync(`${sockPath}.pid`, `${process.ppid}\n`);
     await expect(bind({ probe: async () => "refused" })).rejects.toBeInstanceOf(
       GatewaySocketConflictError,
     );
@@ -268,5 +269,61 @@ describe("a saturated live listener is not a stale socket", () => {
     fs.symlinkSync(elsewhere, `${sockPath}.pid`);
     await bind();
     expect(fs.readFileSync(elsewhere, "utf8")).toBe("do-not-clobber");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Container restart (finca crash loop, 2026-10-23): `~/.pi` is a volume that
+// survives the restart; the dead server's socket + pidfile remain, and the
+// fresh PID namespace hands the new server the SAME pid (or hands it to the
+// launcher / tmux). "Recorded pid is alive" then refused every start forever.
+// ──────────────────────────────────────────────────────────────────────────
+describe("stale socket after a container restart", () => {
+  /** A real leftover socket: bound by a child that is then SIGKILLed. */
+  const leaveStaleSocket = async (): Promise<void> => {
+    const child = spawn(process.execPath, [
+      "-e",
+      `require("node:net").createServer().listen(${JSON.stringify(sockPath)}, () => console.log("up"))`,
+    ]);
+    await new Promise<void>((r) => child.stdout.once("data", () => r()));
+    child.kill("SIGKILL");
+    await new Promise((r) => child.once("exit", r));
+    expect(fs.statSync(sockPath).isSocket()).toBe(true);
+  };
+
+  it("reclaims a stale socket whose pidfile records OUR pid (same pid after restart)", async () => {
+    await leaveStaleSocket();
+    fs.writeFileSync(`${sockPath}.pid`, `${process.pid}\n`);
+    fs.writeFileSync(`${sockPath}.lock`, "# leftover\n");
+    const server = await bind(); // real probe
+    expect(server.listening).toBe(true);
+    expect(fs.readFileSync(`${sockPath}.pid`, "utf8").trim()).toBe(String(process.pid));
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "reclaims when the recorded pid was recycled by a process started after the pidfile",
+    async () => {
+      await leaveStaleSocket();
+      const recycler = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"]);
+      try {
+        fs.writeFileSync(`${sockPath}.pid`, `${recycler.pid}\n`);
+        const anHourAgo = new Date(Date.now() - 3_600_000);
+        fs.utimesSync(`${sockPath}.pid`, anHourAgo, anHourAgo);
+        const server = await bind();
+        expect(server.listening).toBe(true);
+      } finally {
+        recycler.kill("SIGKILL");
+      }
+    },
+  );
+
+  it("still refuses a LIVE socket even when the pidfile records our own pid", async () => {
+    const live = await bind();
+    expect(live.listening).toBe(true);
+    // pidfile now says process.pid — and something IS listening.
+    await expect(bindGatewaySocket({ socketPath: sockPath })).rejects.toBeInstanceOf(
+      GatewaySocketConflictError,
+    );
+    expect(fs.statSync(sockPath).isSocket()).toBe(true);
   });
 });
