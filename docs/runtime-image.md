@@ -51,6 +51,8 @@ Why: trivy on `rubiaceae65/pi-dashboard:dev-3` (2026-10-23) — ~84% of fixable 
 
 ## Behaviour changes
 
+- Root `.pi/skills` (ci-troubleshoot and the other dev/CI agent skills, scanned only for a session whose cwd is `/app`) is left out ON PURPOSE:
+  it is developer tooling, not product. The product's skills live under `packages/*/.pi/skills` and ARE in the runtime image. Do not "restore" it.
 - openforms-mui skill preview/diagnose harness (`tools/`, Vite dev server) has no deps in the image. Recreate: `npm --prefix /app/packages/pi-forms-bpmn/.pi/skills/openforms-mui/tools install`.
 - `docker/test-up.sh` layers new `compose.test.target.yml` and `compose.dev.yml` sets `build.target: app`. Manual `docker compose -f compose.yml -f compose.test.yml up --build` (without test-up.sh) now builds `runtime` — add `-f compose.test.target.yml`. A harness run without `--build` against a `pi-dashboard:local` built by `scripts/build-image.sh` gets the slim image — rebuild with `--build`.
 - Unchanged: ENTRYPOINT/CMD, `pi` user, HOME, ports 8000/9999, VOLUMEs, `/api/health`, tini (= compose `init: true`; not in the image), OCI labels + `SOURCE_DATE_EPOCH` from `scripts/build-image.sh`.
