@@ -140,7 +140,9 @@ describe('range selection (E19, E20, E21)', () => {
     for (const { name, manifest } of nonPrivate()) {
       for (const field of DEP_FIELDS) {
         for (const [dep, range] of Object.entries(manifest[field] ?? {})) {
-          if (/^(workspace|file|link):/.test(range)) continue;
+          // workspace/file/link and URL tarballs (e.g. xlsx from cdn.sheetjs.com, pinned by the lockfile
+          // integrity) are not semver ranges: there is no range to satisfy, the spec names one artifact.
+          if (/^(workspace|file|link|https?):/.test(range)) continue;
           const resolving = resolvedVersion(dep, name);
           if (!resolving) continue; // absent => unverifiable, covered by X3
           if (!rangeIsSatisfiable(range, resolving)) violations.push(`${name} ${field}.${dep}`);
