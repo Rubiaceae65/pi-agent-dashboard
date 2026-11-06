@@ -98,6 +98,13 @@ overrides:
   "@modelcontextprotocol/sdk@1": 1.32.2
   "@modelcontextprotocol/client@2": 2.2.0
   "@modelcontextprotocol/core@2": 2.2.0
+  # 2026-11-05, release gate 15 on rc-0021: additional security fixes from fixlist.
+  # dompurify 3.4.14 -> 3.4.17 (GHSA-cg2g-xh64-v4q7 CRITICAL, GHSA-mrv2-3pqr-j5jr HIGH).
+  "dompurify": "3.4.17"
+  # body-parser 2.3.0 -> 2.4.0 (CVE-2026-111181).
+  "body-parser": "2.4.0"
+  # follow-redirects 1.16.0 -> 1.16.2 (CVE-2026-111755/CVE-2026-111756/CVE-2026-116689).
+  "follow-redirects": "1.16.2"
 
 # pnpm 11 treats un-approved dependency build scripts as a FATAL error
 # (ERR_PNPM_IGNORED_BUILDS, non-zero exit) — which would red every CI
