@@ -18,7 +18,16 @@
 # ---------------------------------------------------------------------------
 
 # ============================ base stage ===================================
-FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS base
+# Base re-pinned 2026-11-05 (gate 15, rc-0021): the rc-0021 base (index digest
+# 55fb5f5a..., bookworm 12.14 line) carried apt 2.6.1 (CVE-2026-109518) and
+# openssl/libssl3 3.0.22-1~deb12u1 (CVE-2026-84782). Index digest
+# 01d566e8... = node:24-bookworm-slim as of 2026-11-05 (node v24.22.2,
+# debian bookworm 12.15, apt 2.6.2; curl/ca-certificates land on
+# libssl3 3.0.22-1~deb12u2 from the 12.15 archive). Same distro line
+# (Debian bookworm-slim, Node 24 LTS), newest stable release of the line:
+# https://hub.docker.com/r/library/node/tags/24-bookworm-slim
+# (amd64 manifest sha256:c0a93797ee78814ae6d32fcca2561fdbbe423149c3f5389aad32d86e9fd85bd4).
+FROM node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS base
 
 # Pinned tool versions — override at build time with --build-arg.
 # zrok + gh downloads are verified against the sha256 pinned here, per arch
@@ -145,13 +154,17 @@ RUN if getent passwd 1000 >/dev/null; then userdel -r "$(getent passwd 1000 | cu
 # pins the resolution to the registry as it was at NPM_BEFORE (npm
 # `--before`), so the same commit resolves the same tree and never a half-
 # published release. Raise it deliberately, together with the pins below.
-ARG NPM_BEFORE=2026-10-21T00:00:00Z
+ARG NPM_BEFORE=2026-11-05T00:00:00Z
 
 # Upgrade the npm bundled with the node base image: its own node_modules ship in
 # runtime and trivy (dev-6, 2026-10-24) flagged brace-expansion 5.0.9 and
-# undici 6.28.0 there (CVE-2026-102276/102278, CVE-2026-19534). npm 11.21.1
-# (2026-10-15) bundles brace-expansion 5.0.12 + undici 6.29.0.
-RUN npm install -g --before="${NPM_BEFORE}" npm@11.21.1 && npm --version
+# undici 6.28.0 there (CVE-2026-102276/102278, CVE-2026-19534). npm 12.2.2
+# (2026-11-04, the registry's `latest`) bundles brace-expansion 5.0.12 +
+# undici 6.29.1 — the 2026-10-15 security line (undici 6.29.x fixes
+# CVE-2026-109383/CVE-2026-109869/CVE-2026-87018; brace-expansion 5.0.12 fixes
+# CVE-2026-102276/102278). Verified in the 2026-11-05 base (node v24.22.2
+# satisfies npm 12 engines ^22.22.2 || ^24.15.0 || >=26.0.0).
+RUN npm install -g --before="${NPM_BEFORE}" npm@12.2.2 && npm --version
 
 # 1.4 Global pi coding agent + openspec (spawned/probed by the dashboard).
 # Install must be fatal; the version probes stay non-fatal (grouped so a
@@ -160,9 +173,17 @@ RUN npm install -g --before="${NPM_BEFORE}" npm@11.21.1 && npm --version
 # (packages/server, packages/extension: 1.11.0). The bare npm name `openspec`
 # is an unrelated 2019 placeholder (0.0.0, no bin): the build log showed
 # `openspec: not found`.
-# Pins (version, npm publish date): pi-coding-agent 0.86.1 (2026-09-20),
-# @fission-ai/openspec 1.11.0 (2026-08-26).
-RUN npm install -g --before="${NPM_BEFORE}" @earendil-works/pi-coding-agent@0.86.1 @fission-ai/openspec@1.11.0 \
+# Pins (version, npm publish date): pi-coding-agent 1.5.0 (2026-11-02, latest
+# stable; registry dist-tag `latest`), @fission-ai/openspec 1.11.0 (2026-08-26).
+# 1.5.0 is the FIRST release carrying undici 8.12.3 (>= 8.12.2, the 2026-10-15
+# fix for CVE-2026-109383/CVE-2026-109869/CVE-2026-87018/CVE-2026-109829) and
+# brace-expansion 5.0.12 (fixes CVE-2026-102276/102278); 0.86.1-1.4.0
+# hard-pin undici 8.10.2 + minimatch 10.2.6, which no resolution pin can move.
+# Verified resolution in the new base as of NPM_BEFORE: undici 8.12.3,
+# brace-expansion 5.0.12, minimatch 11.0.3. The governed workspace floor moves
+# with it (packages/server/package.json, pnpm-workspace.yaml,
+# scripts/verify-release-deps.mjs — the six-pin coherence gate).
+RUN npm install -g --before="${NPM_BEFORE}" @earendil-works/pi-coding-agent@1.5.0 @fission-ai/openspec@1.11.0 \
  && { pi --version || true; } \
  && { openspec --version || true; }
 
@@ -182,7 +203,7 @@ FROM globals AS app
 # pi-coding-agent trees (0.75.5 via subagents' peer range) carrying
 # undici/ws/protobufjs/brace-expansion HIGH findings into the runtime image.
 # ARGs do not cross stages: keep this default equal to the `globals` one.
-ARG NPM_BEFORE=2026-10-21T00:00:00Z
+ARG NPM_BEFORE=2026-11-05T00:00:00Z
 
 # 1.4b Flow-plugin e2e peers (change: add-flow-plugin-e2e-tests). The pi-flows
 # engine + the anthropic-messages bridge peer are BAKED here; test-entrypoint.sh

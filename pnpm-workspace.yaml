@@ -47,7 +47,13 @@ overrides:
   # untouched, so this override is permanently necessary).
   # Caught by the docker harness, not by any unit test.
   # See change: update-pi-core-0-85-adopt-apis.
-  "@earendil-works/pi-coding-agent": 0.86.1
+  # 2026-11-05 (gate 15, rc-0021): 0.86.1 -> 1.5.0. 1.5.0 (2026-11-02, latest
+  # stable) is the first pi release whose own tree is clean: undici 8.12.3
+  # (>= 8.12.2) and brace-expansion 5.0.12. 0.86.1-1.4.0 hard-pin undici
+  # 8.10.2, which no override-free resolution can move in a global npm install
+  # (the Dockerfile global tree), so the governed floor moves with the
+  # Dockerfile pin to keep the six-pin coherence gate green.
+  "@earendil-works/pi-coding-agent": 1.5.0
   # Security floor (2026-10-23, trivy 0.76.0 on rubiaceae65/pi-dashboard:dev-3,
   # fixable CRITICAL/HIGH). Each selector stays inside the resolved major.
   # form-data 2.5.6 goes past the parent's declared range (request@2.88.2
@@ -64,11 +70,19 @@ overrides:
   # - @modelcontextprotocol/client 2.0.0 -> 2.2.0 (CVE-2026-104850):
   #   pi-mcp-adapter@2.30.0 pins client+core 2.0.0 exactly; client 2.2.0 pins
   #   core 2.2.0, so core moves with it to keep ONE core copy.
-  "undici@6": 6.28.1
-  "undici@7": 7.29.1
+  # 2026-11-05, release gate 15 on rc-0021 (trivy DB 2026-11-05T07:00Z): the
+  # undici 2026-10-15 security line (CVE-2026-109383/CVE-2026-109869/
+  # CVE-2026-87018 fixed in 6.29.1/7.30.1/8.12.2; CVE-2026-109829 in
+  # 7.30.1/8.12.2) and brace-expansion 5.0.12 (CVE-2026-102276/102278).
+  # `undici@8` is NEW: @earendil-works/pi-coding-agent pins undici 8.10.2
+  # EXACTLY (0.86.1-1.4.0), so only an override (or the 1.5.0 bump below,
+  # which carries 8.12.3 itself) moves the workspace copy.
+  "undici@6": 6.29.1
+  "undici@7": 7.30.2
+  "undici@8": 8.12.4
   "brace-expansion@1": 1.1.20
   "brace-expansion@2": 2.1.6
-  "brace-expansion@5": 5.0.11
+  "brace-expansion@5": 5.0.12
   "@xmldom/xmldom@0.9": 0.9.12
   "fastify@5": 5.12.2
   "fast-uri@3": 3.1.7
@@ -78,7 +92,10 @@ overrides:
   "proxy-addr@2": 2.0.8
   "source-map-js@1": 1.2.2
   "basic-ftp@5": 6.2.1
-  "@modelcontextprotocol/sdk@1": 1.31.0
+  # @modelcontextprotocol/sdk 1.32.2 (2026-10-23, latest 1.x): fixes
+  # CVE-2026-111767/CVE-2026-111768 (fixed in 1.32.0 per the gate 15 work
+  # list; 1.32.2 is the newest stable 1.x).
+  "@modelcontextprotocol/sdk@1": 1.32.2
   "@modelcontextprotocol/client@2": 2.2.0
   "@modelcontextprotocol/core@2": 2.2.0
 
